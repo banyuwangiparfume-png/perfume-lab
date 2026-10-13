@@ -299,8 +299,25 @@ describe("fixture 01 — bridger", () => {
   });
 
   it("dosis awal mengikuti kekuatan bahannya", () => {
-    for (const s of pair("top", "mid").suggestions) {
-      expect(s.starterDose).toBe((s.impact ?? 100) <= 150 ? 1 : 0.5);
+    // Fixture tidak menentukan angka dosis, jadi yang diuji hubungannya:
+    // makin keras bahannya, makin kecil dosis awalnya. Bahan tanpa impact
+    // tidak ikut — untuk dia dosisnya memang tidak dihitung.
+    const scored = pair("top", "mid")
+      .suggestions.filter((s) => s.impact != null)
+      .sort((a, b) => a.impact! - b.impact!);
+
+    expect(scored.length).toBeGreaterThan(1);
+    for (let i = 1; i < scored.length; i++) {
+      expect(scored[i].starterDose).toBeLessThanOrEqual(
+        scored[i - 1].starterDose,
+      );
+    }
+  });
+
+  it("dosis awal selalu angka yang wajar ditimbang", () => {
+    const steps = [0.1, 0.25, 0.5, 1, 2, 5];
+    for (const p of result.bridges.crossTier) {
+      for (const s of p.suggestions) expect(steps).toContain(s.starterDose);
     }
   });
 });

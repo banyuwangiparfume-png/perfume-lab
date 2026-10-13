@@ -114,9 +114,11 @@ export function analyze(
       : {
           crossTier: crossTierBridges(ctx, items, {
             onlyStock: opts.onlyStockBridges,
+            totalScore: strength.totalScore,
           }),
           withinTier: withinTierBridges(ctx, items, {
             onlyStock: opts.onlyStockBridges,
+            totalScore: strength.totalScore,
           }),
         };
 

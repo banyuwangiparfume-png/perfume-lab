@@ -58,6 +58,13 @@ export type StrengthResult = {
   /** nama bahan yang impact-nya belum ada */
   missingImpact: string[];
   excludedFoPct: number;
+  /**
+   * Σ kekuatan mentah sebelum dinormalkan jadi persen.
+   *
+   * Dipakai untuk membalik arah hitungan: dari "berapa persen kekuatan yang
+   * saya mau" jadi "berapa persen bahan yang harus ditimbang".
+   */
+  totalScore: number;
 };
 
 export function strengthTable(
@@ -127,6 +134,7 @@ export function strengthTable(
     coverage: totalPct ? ((totalPct - foPct) / totalPct) * 100 : 0,
     missingImpact: [...new Set(missingImpact)],
     excludedFoPct: foPct,
+    totalScore: totalStrength,
   };
 }
 

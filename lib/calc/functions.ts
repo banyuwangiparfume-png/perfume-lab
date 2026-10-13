@@ -15,11 +15,25 @@ export const FUNCTION_LABELS: Record<string, string> = {
 };
 
 export const FUNCTION_HINTS: Record<string, string> = {
-  diffuser: "Membawa formula keluar dari kulit — jangkauan dan sillage.",
-  modifier: "Memberi watak. Bagian yang membuat formula ini terdengar seperti dirinya.",
-  bridger: "Menyambung dua sisi yang kalau berdiri sendiri terdengar terpisah.",
-  fixative: "Menahan yang ringan supaya tidak hilang duluan. Penentu panjang drydown.",
+  diffuser: "Proyeksi dan sillage — yang membawa formula keluar dari kulit.",
+  modifier:
+    "Watak. Yang membuat formula ini terdengar seperti dirinya — bukan yang mengatur performanya.",
+  bridger:
+    "Menyambung dua sisi yang kalau berdiri sendiri terdengar terpisah.",
+  fixative:
+    "Ketahanan. Menahan yang ringan supaya tidak hilang duluan; penentu panjang drydown.",
 };
+
+/**
+ * Performa (sillage, proyeksi, ketahanan) TIDAK diatur oleh Modifier.
+ *
+ * Ini sumber salah paham yang paling sering: "modifier" di percakapan
+ * sehari-hari sering dipakai untuk bahan yang dipakai mendongkrak performa,
+ * padahal di kategori supplier dia berarti bahan yang mengatur watak. Yang
+ * mengatur performa ada di dua kategori lain.
+ */
+export const SPL_NOTE =
+  "Performa diatur Diffuser (proyeksi dan sillage) dan Fixative (ketahanan). Modifier mengatur watak, bukan performa.";
 
 export const UNKNOWN_KEY = "unknown";
 

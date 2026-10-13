@@ -54,6 +54,7 @@ describe("functionMix — kategori yang belum terisi", () => {
       coverage: 0,
       missingImpact: [],
       excludedFoPct: 0,
+      totalScore: 0,
     });
     expect(empty.rows).toEqual([]);
     expect(empty.coverage).toBe(0);

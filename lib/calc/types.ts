@@ -91,6 +91,12 @@ export type Settings = {
   bridgeThresholds: { connected: number; loose: number };
   solventWarn: { singlePct: number; totalPct: number };
   dominance: { minStrengthPct: number; ratio: number };
+  bridgeStarter: {
+    /** porsi kekuatan yang dituju saat bridger pertama kali ditambahkan */
+    targetStrengthPct: number;
+    minPct: number;
+    maxPct: number;
+  };
   functionMix: {
     /** di bawah ini, porsi fixative dilaporkan sebagai catatan */
     fixativeWarnPct: number;

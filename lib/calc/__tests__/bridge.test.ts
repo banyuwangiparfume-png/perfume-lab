@@ -119,10 +119,53 @@ describe("dosis awal & tier tujuan", () => {
     ...over,
   });
 
-  it("bahan lembut mulai 1%, bahan keras mulai 0,5%", () => {
-    expect(starterDose(mk({ impact: 100 }))).toBe(1);
-    expect(starterDose(mk({ impact: 150 }))).toBe(1);
-    expect(starterDose(mk({ impact: 400 }))).toBe(0.5);
+  describe("dosis awal dibalik dari porsi kekuatan", () => {
+    // Satu formula dengan total kekuatan 1000 unit. Target 3% kekuatan berarti
+    // skor yang dicari = 0,03/0,97 x 1000 = 30,9 unit.
+    const total = 1000;
+
+    it("makin lemah bahannya, makin besar dosis awalnya", () => {
+      const lemah = starterDose(mk({ impact: 20 }), { totalScore: total });
+      const sedang = starterDose(mk({ impact: 100 }), { totalScore: total });
+      const keras = starterDose(mk({ impact: 500 }), { totalScore: total });
+
+      expect(lemah).toBeGreaterThan(sedang);
+      expect(sedang).toBeGreaterThan(keras);
+    });
+
+    it("hasilnya selalu angka yang wajar ditimbang", () => {
+      const steps = [0.1, 0.25, 0.5, 1, 2, 5];
+      for (const impact of [5, 20, 40, 100, 150, 350, 800, 5000]) {
+        expect(steps).toContain(
+          starterDose(mk({ impact }), { totalScore: total }),
+        );
+      }
+    });
+
+    it("tidak pernah mengusulkan bridger sebagai bahan utama", () => {
+      // Bahan sangat lemah di formula sangat kuat: tanpa batas atas, rumusnya
+      // bisa mengusulkan puluhan persen.
+      expect(
+        starterDose(mk({ impact: 1 }), { totalScore: 100000 }),
+      ).toBeLessThanOrEqual(5);
+    });
+
+    it("bahan tanpa data impact tetap 1% — bukan ditebak", () => {
+      expect(starterDose(mk({ impact: null }), { totalScore: total })).toBe(1);
+    });
+
+    it("formula kosong tetap 1%, bukan pembagian nol", () => {
+      expect(starterDose(mk({ impact: 100 }), { totalScore: 0 })).toBe(1);
+      expect(starterDose(mk({ impact: 100 }))).toBe(1);
+    });
+
+    it("dosisnya ikut formula, bukan cuma ikut bahannya", () => {
+      // Pertanyaan yang tidak bisa dijawab aturan dua bucket: menjembatani
+      // formula yang ramai butuh lebih banyak daripada yang sepi.
+      const sepi = starterDose(mk({ impact: 100 }), { totalScore: 200 });
+      const ramai = starterDose(mk({ impact: 100 }), { totalScore: 5000 });
+      expect(ramai).toBeGreaterThan(sepi);
+    });
   });
 
   it("Top ↔ Mid selalu masuk ke Mid", () => {

@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { Analysis } from "@/lib/calc/analyze";
 import type { BridgeStatus, BridgeSuggestion } from "@/lib/calc/bridge";
-import { FUNCTION_HINTS, UNKNOWN_KEY } from "@/lib/calc/functions";
+import { FUNCTION_HINTS, SPL_NOTE, UNKNOWN_KEY } from "@/lib/calc/functions";
 import { fmtGram, fmtIdr, fmtNum, fmtPct } from "@/lib/calc/format";
 import { RULES_FOOTER, RULES_HEALTHY, type Warning } from "@/lib/calc/rules";
 import type { FormulaContext, Tier } from "@/lib/calc/types";
@@ -800,6 +800,10 @@ function FunctionTab({ analysis }: { analysis: Analysis }) {
           </li>
         ))}
       </ul>
+
+      <p className="rounded-lg bg-[var(--surface-muted)] px-3 py-2 text-[11px] leading-relaxed text-[var(--text-muted)]">
+        {SPL_NOTE}
+      </p>
 
       {/* Ke mana sisa persennya pergi — supaya tidak dicari-cari. */}
       <p className="border-t border-[var(--border)] pt-2 text-[11px] leading-relaxed text-[var(--text-subtle)]">

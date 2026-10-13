@@ -7,6 +7,7 @@ import {
   type FacetVector,
   type FormulaContext,
   type Material,
+  type Settings,
   type Tier,
 } from "./types";
 
@@ -61,8 +62,58 @@ export type BridgeSuggestion = {
 };
 
 /** Dosis awal: bahan kuat dimulai setengahnya, supaya tidak kedengaran sendiri. */
-export function starterDose(material: Material): number {
-  return (material.impact ?? 100) <= 150 ? 1 : 0.5;
+/** Dipakai kalau pemanggil tidak membawa settings. */
+const DEFAULT_BRIDGE_STARTER = {
+  targetStrengthPct: 3,
+  minPct: 0.1,
+  maxPct: 5,
+};
+
+/**
+ * Langkah dosis yang wajar ditimbang dan dibaca manusia.
+ *
+ * Hasil hitungan sengaja dibulatkan ke salah satu angka ini. Nilai impact dari
+ * supplier itu bucketed — puluhan bahan bernilai persis 100 — jadi dosis
+ * seperti "0,37%" memberi kesan presisi yang datanya tidak punya.
+ */
+const DOSE_STEPS = [0.1, 0.25, 0.5, 1, 2, 5];
+
+const snapToStep = (value: number): number =>
+  DOSE_STEPS.reduce((best, step) =>
+    Math.abs(step - value) < Math.abs(best - value) ? step : best,
+  );
+
+/**
+ * Dosis awal bridger, dibalik dari porsi kekuatan yang dituju.
+ *
+ * Aturan lama cuma dua bucket: 1% kalau impact di bawah 150, selain itu 0,5%.
+ * Di master Ecofragrantica itu berarti 244 dari 328 kandidat mendapat angka
+ * yang sama persis, padahal impact di dalam bucket itu berentang 5 sampai 150
+ * — tiga puluh kali lipat. Bahan selemah Iso E Super di 1% nyaris tidak
+ * terdengar, jadi dosis awalnya tidak bisa dipakai menilai apa pun.
+ *
+ * Sekarang: berapa persen yang membuat bahan ini menyumbang kira-kira sekian
+ * persen dari kekuatan formula. Bahan lemah dapat dosis besar, bahan kuat
+ * dapat dosis kecil, dan angkanya ikut menyesuaikan formula — menjembatani
+ * formula yang ramai butuh lebih banyak daripada yang sepi.
+ *
+ * Bahan TANPA data impact tetap 1%. Menebak di atas data kosong lebih buruk
+ * daripada mengaku tidak tahu.
+ */
+export function starterDose(
+  material: Material,
+  opts: { totalScore?: number; settings?: Settings } = {},
+): number {
+  const cfg = opts.settings?.bridgeStarter ?? DEFAULT_BRIDGE_STARTER;
+  const impact = material.impact;
+  const total = opts.totalScore ?? 0;
+
+  if (impact == null || impact <= 0 || total <= 0) return 1;
+
+  const share = cfg.targetStrengthPct / 100;
+  const dose = (share * total) / (impact * (1 - share));
+
+  return snapToStep(Math.min(cfg.maxPct, Math.max(cfg.minPct, dose)));
 }
 
 const strongestShared = (x: FacetVector, v: FacetVector): string | null => {
@@ -102,6 +153,8 @@ export function suggestBridges(
     pair?: [Tier, Tier];
     /** jembatan dalam tier: tujuannya selalu tier itu sendiri */
     forceTier?: Tier;
+    /** jumlah kekuatan formula sekarang, untuk membalik dosis awal */
+    totalScore?: number;
   } = {},
 ): BridgeSuggestion[] {
   const { onlyStock = false, limit = 5 } = opts;
@@ -154,7 +207,10 @@ export function suggestBridges(
       functionCategory: material.functionCategory,
       impact: material.impact,
       inStock: ctx.stock.has(material.id),
-      starterDose: starterDose(material),
+      starterDose: starterDose(material, {
+        totalScore: opts.totalScore,
+        settings: ctx.settings,
+      }),
       // Tier tujuan ditentukan PER BAHAN, bukan per pasangan: aturannya
       // bergantung pada note_tier_hint bahan itu sendiri (PRD v2 §6 B.A).
       tier:
@@ -202,7 +258,7 @@ export function recommendTier(
 export function crossTierBridges(
   ctx: FormulaContext,
   items: ExpandedItem[],
-  opts: { onlyStock?: boolean } = {},
+  opts: { onlyStock?: boolean; totalScore?: number } = {},
 ): TierBridge[] {
   if (!ctx.version.pyramid) return [];
 
@@ -282,7 +338,7 @@ function lineVector(
 export function withinTierBridges(
   ctx: FormulaContext,
   items: ExpandedItem[],
-  opts: { onlyStock?: boolean; maxPairs?: number } = {},
+  opts: { onlyStock?: boolean; maxPairs?: number; totalScore?: number } = {},
 ): WithinTierPair[] {
   const { maxPairs = 15 } = opts;
   const exclude = usedMaterialIds(items);

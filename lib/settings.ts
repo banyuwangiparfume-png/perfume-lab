@@ -23,6 +23,13 @@ export const DEFAULT_SETTINGS: Settings = {
   solventWarn: { singlePct: 10, totalPct: 25 },
   dominance: { minStrengthPct: 20, ratio: 3 },
   /*
+    Dosis awal bridger dibalik dari porsi kekuatan, bukan dari impact langsung:
+    3% kekuatan cukup terdengar untuk dinilai, tapi belum cukup untuk mengambil
+    alih. Batas bawah dan atas menjaga hasilnya tetap bisa ditimbang dan tidak
+    pernah mengusulkan bridger sebagai bahan utama.
+  */
+  bridgeStarter: { targetStrengthPct: 3, minPct: 0.1, maxPct: 5 },
+  /*
     Ambang fixative sengaja rendah. Tugasnya menangkap formula yang benar-benar
     tidak punya penahan, bukan memaksakan satu mazhab komposisi — berapa persen
     fixative yang "benar" sangat bergantung pada gaya dan jenis parfumnya, dan
@@ -51,6 +58,7 @@ export function mergeSettings(patch: Partial<Settings> | null): Settings {
     },
     solventWarn: { ...DEFAULT_SETTINGS.solventWarn, ...patch.solventWarn },
     dominance: { ...DEFAULT_SETTINGS.dominance, ...patch.dominance },
+    bridgeStarter: { ...DEFAULT_SETTINGS.bridgeStarter, ...patch.bridgeStarter },
     functionMix: { ...DEFAULT_SETTINGS.functionMix, ...patch.functionMix },
     supplierSolventTokens: {
       ...DEFAULT_SETTINGS.supplierSolventTokens,
