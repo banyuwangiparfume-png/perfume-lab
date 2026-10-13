@@ -60,7 +60,13 @@ async function fetchVersionWithLines(
 ): Promise<{ version: FormulaVersionRow; formula: FormulaRow; lines: Line[] } | null> {
   const { data, error } = await db
     .from("formula_versions")
-    .select("*, formula:formulas(*), lines:formula_lines(*)")
+    // Nama foreign key-nya WAJIB disebut. formula_lines punya dua kolom yang
+    // menunjuk ke formula_versions — formula_version_id (induknya) dan
+    // accord_version_id (accord yang dipakai) — jadi tanpa petunjuk ini
+    // PostgREST menolak: "more than one relationship was found".
+    .select(
+      `*, formula:formulas(*), lines:formula_lines!formula_lines_formula_version_id_fkey(*)`,
+    )
     .eq("id", versionId)
     .maybeSingle();
 

@@ -148,10 +148,14 @@ export async function listAccordsForPicker(
 
   const { data, error } = await db
     .from("formula_versions")
+    // Nama foreign key-nya WAJIB disebut. formula_lines punya dua kolom yang
+    // menunjuk ke formula_versions — formula_version_id (induknya) dan
+    // accord_version_id (accord yang dipakai) — jadi tanpa petunjuk ini
+    // PostgREST menolak: "more than one relationship was found".
     .select(
       `id, version_no,
        formula:formulas!inner(id, name, category, owner_id, is_archived),
-       lines:formula_lines(*)`,
+       lines:formula_lines!formula_lines_formula_version_id_fkey(*)`,
     )
     .gt("version_no", 0)
     .eq("formula.owner_id", ownerId)
