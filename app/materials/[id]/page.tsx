@@ -157,8 +157,8 @@ export default async function MaterialDetailPage({
                     {material.allPrices.map((price) => {
                       const isCheapest =
                         cheapest != null &&
-                        Number(price.tier_grams) ===
-                          Number(cheapest.tier_grams) &&
+                        Number(price.tier_size) ===
+                          Number(cheapest.tier_size) &&
                         price.effective_date === cheapest.effective_date;
                       return (
                         <tr
@@ -166,7 +166,7 @@ export default async function MaterialDetailPage({
                           className="border-b border-[var(--border)] last:border-0"
                         >
                           <td className="py-2">
-                            {fmtNum(price.tier_grams)} g
+                            {fmtNum(price.tier_size)} g
                             {isCheapest && (
                               <span className="ml-2 rounded bg-[var(--ok-soft)] px-1.5 py-0.5 text-[11px] font-medium text-[var(--ok)]">
                                 termurah/g

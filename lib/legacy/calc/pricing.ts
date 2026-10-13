@@ -2,7 +2,7 @@ import type { RmPriceRow } from "../../supabase/database.types";
 
 export type PriceTier = Pick<
   RmPriceRow,
-  "tier_grams" | "price_idr" | "effective_date"
+  "tier_size" | "price_idr" | "effective_date"
 >;
 
 export type PricePick = {
@@ -11,9 +11,9 @@ export type PricePick = {
   effectiveDate: string;
 };
 
-/** price_per_gram = price_idr / tier_grams */
+/** price_per_gram = price_idr / tier_size */
 export const pricePerGram = (t: PriceTier) =>
-  t.tier_grams > 0 ? Number(t.price_idr) / Number(t.tier_grams) : 0;
+  t.tier_size > 0 ? Number(t.price_idr) / Number(t.tier_size) : 0;
 
 /**
  * Memilih harga yang dipakai untuk kalkulasi.
@@ -42,16 +42,16 @@ export function pickPrice(
   if (!current.length) return null;
 
   const affordable = current.filter(
-    (p) => Number(p.tier_grams) <= preferredTierG,
+    (p) => Number(p.tier_size) <= preferredTierG,
   );
   const pool = affordable.length ? affordable : current;
   const chosen = affordable.length
-    ? pool.reduce((a, b) => (Number(b.tier_grams) > Number(a.tier_grams) ? b : a))
-    : pool.reduce((a, b) => (Number(b.tier_grams) < Number(a.tier_grams) ? b : a));
+    ? pool.reduce((a, b) => (Number(b.tier_size) > Number(a.tier_size) ? b : a))
+    : pool.reduce((a, b) => (Number(b.tier_size) < Number(a.tier_size) ? b : a));
 
   return {
     pricePerGram: pricePerGram(chosen),
-    tierGrams: Number(chosen.tier_grams),
+    tierGrams: Number(chosen.tier_size),
     effectiveDate: chosen.effective_date,
   };
 }

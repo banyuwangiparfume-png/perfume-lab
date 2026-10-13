@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { cheapestTier, pickPrice, pricePerGram } from "./pricing";
 
 const tier = (g: number, idr: number, date = "2026-10-01") => ({
-  tier_grams: g,
+  tier_size: g,
   price_idr: idr,
   effective_date: date,
 });
@@ -54,6 +54,6 @@ describe("pickPrice", () => {
 describe("cheapestTier", () => {
   it("menandai tier dengan harga per gram paling murah", () => {
     const t = cheapestTier([tier(5, 100_000), tier(500, 7_000_000)])!;
-    expect(Number(t.tier_grams)).toBe(500);
+    expect(Number(t.tier_size)).toBe(500);
   });
 });

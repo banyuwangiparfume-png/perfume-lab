@@ -1,196 +1,75 @@
 import "server-only";
 
-import { analyze, type Analysis } from "../legacy/calc/analyze";
-import {
-  checkCandidate,
-  explainProblem,
-  type SubFormulaGraph,
-} from "../legacy/calc/cycle";
-import { aggregateImpact } from "../legacy/calc/formula";
-import type { CalcLine } from "../legacy/calc/types";
-import { T } from "../rules/thresholds";
+import { analyze, type Analysis } from "../calc/analyze";
+import type { FormulaContext, Line, Tier } from "../calc/types";
 import { getOwnerId } from "../owner";
 import { getDb } from "../supabase/db";
-import type {
-  FormulaLineRow,
-  FormulaRow,
-  FormulaVersionRow,
-} from "../supabase/database.types";
-import { getFragranceOilsByIds } from "./fragrance-oils";
-import { getMaterialsByIds } from "./materials";
-
-type Db = ReturnType<typeof getDb>;
+import type { FormulaRow, FormulaVersionRow } from "../supabase/database.types";
+import { loadFormulaContext } from "./loadFormulaContext";
 
 /** Label versi yang dipakai di mana-mana: "Jasmine Accord · v3". */
 export const versionLabel = (formulaName: string, versionNo: number) =>
-  `${formulaName} · v${versionNo}`;
+  versionNo === 0 ? `${formulaName} · draf` : `${formulaName} · v${versionNo}`;
 
-async function fetchLines(
-  db: Db,
-  versionId: string,
-): Promise<FormulaLineRow[]> {
-  const { data, error } = await db
-    .from("formula_lines")
+/**
+ * Seluruh versi sebuah formula.
+ *
+ * Draf kerja (version_no = 0) dikeluarkan secara default: dia bukan versi, dia
+ * papan tulis yang sedang dipakai. Menampilkannya di riwayat cuma
+ * membingungkan.
+ */
+export async function listVersions(
+  formulaId: string,
+  opts: { includeDraft?: boolean } = {},
+): Promise<FormulaVersionRow[]> {
+  const db = getDb();
+  let q = db
+    .from("formula_versions")
     .select("*")
-    .eq("formula_version_id", versionId)
-    .order("sort_order");
-  if (error) throw new Error(`Gagal memuat baris formula: ${error.message}`);
+    .eq("formula_id", formulaId)
+    .order("version_no", { ascending: false });
+
+  if (!opts.includeDraft) q = q.gt("version_no", 0);
+
+  const { data, error } = await q;
+  if (error) throw new Error(`Gagal memuat daftar versi: ${error.message}`);
   return data ?? [];
 }
 
-type SubVersionMeta = {
-  id: string;
-  version_no: number;
-  formula: { id: string; name: string; type: string } | null;
-};
-
-async function fetchSubVersionMeta(
-  db: Db,
-  ids: string[],
-): Promise<Map<string, SubVersionMeta>> {
-  if (!ids.length) return new Map();
+/** Draf kerja sebuah formula — yang dibuka editor. */
+export async function getDraftVersion(
+  formulaId: string,
+): Promise<FormulaVersionRow | null> {
+  const db = getDb();
   const { data, error } = await db
     .from("formula_versions")
-    .select("id, version_no, formula:formulas(id, name, type)")
-    .in("id", ids);
-  if (error) throw new Error(`Gagal memuat sub-formula: ${error.message}`);
-  return new Map(
-    (data as unknown as SubVersionMeta[]).map((v) => [v.id, v]),
-  );
-}
-
-/**
- * Memuat baris sebuah versi dan mengubahnya jadi CalcLine, dengan sub-formula
- * ter-resolve sampai batas kedalaman.
- *
- * Baris FO tidak punya penyusun — isinya memang tidak diketahui, jadi dia
- * berhenti sebagai satu baris.
- *
- * `cache` mencegah versi yang sama di-resolve berulang kali dalam satu request,
- * dan `inProgress` menghentikan rekursi kalau ternyata ada siklus di data lama
- * — supaya halamannya tetap tampil, bukan hang.
- */
-export async function resolveVersionLines(
-  versionId: string,
-  depth = 1,
-  cache = new Map<string, CalcLine[]>(),
-  inProgress = new Set<string>(),
-): Promise<CalcLine[]> {
-  const cached = cache.get(versionId);
-  if (cached) return cached;
-  if (inProgress.has(versionId)) return [];
-
-  const db = getDb();
-  inProgress.add(versionId);
-
-  const rows = await fetchLines(db, versionId);
-
-  const [materials, fos, subMeta] = await Promise.all([
-    getMaterialsByIds(
-      rows.map((r) => r.raw_material_id).filter((x): x is string => !!x),
-    ),
-    getFragranceOilsByIds(
-      rows.map((r) => r.fo_id).filter((x): x is string => !!x),
-    ),
-    fetchSubVersionMeta(
-      db,
-      rows.map((r) => r.sub_formula_version_id).filter((x): x is string => !!x),
-    ),
-  ]);
-
-  const lines: CalcLine[] = [];
-
-  for (const row of rows) {
-    const base = {
-      id: row.id,
-      weightG: Number(row.weight_g),
-      dilutionPct: Number(row.dilution_pct),
-      solvent: row.solvent,
-      note: row.note,
-    };
-
-    if (row.line_type === "raw_material") {
-      const m = row.raw_material_id
-        ? materials.get(row.raw_material_id)
-        : undefined;
-      lines.push({
-        ...base,
-        lineType: "raw_material",
-        label: m?.name ?? "Bahan tidak ditemukan",
-        impact: m?.effectiveImpact ?? null,
-        functionCategory: m?.function_category ?? null,
-        family: m?.family ?? null,
-        pricePerGram: m?.pricePerGram ?? null,
-      });
-      continue;
-    }
-
-    if (row.line_type === "fo") {
-      const f = row.fo_id ? fos.get(row.fo_id) : undefined;
-      lines.push({
-        ...base,
-        lineType: "fo",
-        label: f?.name ?? "FO tidak ditemukan",
-        foFamily: f?.family ?? null,
-        pricePerGram:
-          f?.price_per_gram != null ? Number(f.price_per_gram) : null,
-      });
-      continue;
-    }
-
-    // sub_formula
-    const subId = row.sub_formula_version_id!;
-    const meta = subMeta.get(subId);
-    const label = meta?.formula
-      ? versionLabel(meta.formula.name, meta.version_no)
-      : "Formula tidak ditemukan";
-
-    const subLines =
-      depth < T.maxSubFormulaDepth
-        ? await resolveVersionLines(subId, depth + 1, cache, inProgress)
-        : [];
-
-    // Harga sub-formula = biaya per gram murni penyusunnya. Null kalau ada
-    // penyusun yang harganya belum ada — biaya tidak diketahui bukan nol.
-    const subNeat = subLines.reduce(
-      (a, l) => a + l.weightG * (l.dilutionPct / 100),
-      0,
-    );
-    const subHasAllPrices =
-      subLines.length > 0 && subLines.every((l) => l.pricePerGram != null);
-    const subCost = subHasAllPrices
-      ? subLines.reduce(
-          (a, l) => a + l.weightG * (l.dilutionPct / 100) * l.pricePerGram!,
-          0,
-        )
-      : null;
-
-    lines.push({
-      ...base,
-      lineType: "sub_formula",
-      label,
-      subFormulaType: meta?.formula?.type ?? null,
-      subLines,
-      pricePerGram: subCost != null && subNeat > 0 ? subCost / subNeat : null,
-    });
-  }
-
-  inProgress.delete(versionId);
-  cache.set(versionId, lines);
-  return lines;
+    .select("*")
+    .eq("formula_id", formulaId)
+    .eq("version_no", 0)
+    .maybeSingle();
+  if (error) throw new Error(`Gagal memuat draf: ${error.message}`);
+  return data ?? null;
 }
 
 export type VersionDetail = {
   formula: FormulaRow;
   version: FormulaVersionRow;
   versions: FormulaVersionRow[];
-  lines: CalcLine[];
+  context: FormulaContext;
   analysis: Analysis;
   evaluationCount: number;
 };
 
+/**
+ * Versi lengkap beserta seluruh analisanya.
+ *
+ * Analisanya dihitung dengan fungsi yang SAMA PERSIS dengan panel live di
+ * editor — bukan jalur kedua yang bisa menghasilkan angka berbeda tanpa ada
+ * yang sadar.
+ */
 export async function getVersionDetail(
   versionId: string,
+  opts: { skipBridges?: boolean } = {},
 ): Promise<VersionDetail | null> {
   const db = getDb();
   const ownerId = await getOwnerId();
@@ -211,33 +90,21 @@ export async function getVersionDetail(
   if (fErr) throw new Error(`Gagal memuat formula: ${fErr.message}`);
   if (!formula || formula.owner_id !== ownerId) return null;
 
-  const [versions, lines, evalCount] = await Promise.all([
+  const [context, versions, evaluationCount] = await Promise.all([
+    loadFormulaContext(versionId),
     listVersions(version.formula_id),
-    resolveVersionLines(versionId),
     countEvaluations(versionId),
   ]);
+  if (!context) return null;
 
   return {
     formula,
     version,
     versions,
-    lines,
-    analysis: analyze(lines),
-    evaluationCount: evalCount,
+    context,
+    analysis: analyze(context, { skipBridges: opts.skipBridges }),
+    evaluationCount,
   };
-}
-
-export async function listVersions(
-  formulaId: string,
-): Promise<FormulaVersionRow[]> {
-  const db = getDb();
-  const { data, error } = await db
-    .from("formula_versions")
-    .select("*")
-    .eq("formula_id", formulaId)
-    .order("version_no", { ascending: false });
-  if (error) throw new Error(`Gagal memuat daftar versi: ${error.message}`);
-  return data ?? [];
 }
 
 async function countEvaluations(versionId: string): Promise<number> {
@@ -250,11 +117,32 @@ async function countEvaluations(versionId: string): Promise<number> {
   return count ?? 0;
 }
 
+export type AccordOption = {
+  versionId: string;
+  formulaId: string;
+  label: string;
+  materialCount: number;
+  /** baris penyusunnya, supaya panel live di editor bisa membentangkan
+   *  accord ini tanpa bolak-balik ke server */
+  lines: Line[];
+  /** terisi = tidak boleh dipakai, dan ini alasannya untuk tooltip */
+  disabledReason: string | null;
+};
+
 /**
- * Graf sub-formula seluruh milik user, untuk pemeriksaan siklus dan kedalaman.
- * Dimuat sekali per request lalu dipakai oleh checkCandidate().
+ * Accord yang bisa dipakai sebagai bahan di formula lain.
+ *
+ * Hanya formula berkategori `accord`, dan hanya VERSI TERSIMPAN — bukan draf.
+ * Draf berubah tiap detik; formula yang memakainya akan ikut berubah tanpa
+ * pemiliknya sadar, dan itu persis yang membuat formula tidak bisa
+ * direproduksi.
+ *
+ * Versi yang tidak boleh dipakai tetap ditampilkan tapi non-aktif dengan
+ * alasannya — menyembunyikannya cuma membuat user mencari-cari.
  */
-export async function loadSubFormulaGraph(): Promise<SubFormulaGraph> {
+export async function listAccordsForPicker(
+  excludeFormulaId?: string,
+): Promise<AccordOption[]> {
   const db = getDb();
   const ownerId = await getOwnerId();
 
@@ -262,144 +150,68 @@ export async function loadSubFormulaGraph(): Promise<SubFormulaGraph> {
     .from("formula_versions")
     .select(
       `id, version_no,
-       formula:formulas!inner(id, name, owner_id),
-       lines:formula_lines!formula_lines_formula_version_id_fkey(sub_formula_version_id)`,
+       formula:formulas!inner(id, name, category, owner_id, is_archived),
+       lines:formula_lines(*)`,
     )
-    .eq("formula.owner_id", ownerId);
+    .gt("version_no", 0)
+    .eq("formula.owner_id", ownerId)
+    .eq("formula.category", "accord")
+    .eq("formula.is_archived", false)
+    .order("version_no", { ascending: false });
 
-  if (error) throw new Error(`Gagal memuat graf sub-formula: ${error.message}`);
+  if (error) throw new Error(`Gagal memuat daftar accord: ${error.message}`);
 
   type Row = {
     id: string;
     version_no: number;
     formula: { id: string; name: string } | null;
-    lines: { sub_formula_version_id: string | null }[];
+    lines: {
+      id: string; tier: Tier; line_type: "raw_material" | "accord" | "fo";
+      raw_material_id: string | null; accord_version_id: string | null;
+      fo_id: string | null; pct: number; is_locked: boolean;
+      user_dilution_pct: number; user_solvent_id: string | null; sort_order: number;
+    }[];
   };
 
-  const graph: SubFormulaGraph = new Map();
+  // Satu baris per formula: versi tersimpan tertinggi.
+  const latest = new Map<string, Row>();
   for (const row of (data ?? []) as unknown as Row[]) {
-    graph.set(row.id, {
-      versionId: row.id,
-      label: row.formula
-        ? versionLabel(row.formula.name, row.version_no)
-        : `v${row.version_no}`,
-      subVersionIds: row.lines
-        .map((l) => l.sub_formula_version_id)
-        .filter((x): x is string => !!x),
-    });
+    if (!row.formula) continue;
+    const prev = latest.get(row.formula.id);
+    if (!prev || row.version_no > prev.version_no) {
+      latest.set(row.formula.id, row);
+    }
   }
-  return graph;
-}
 
-export type SubFormulaCandidate = {
-  versionId: string;
-  formulaId: string;
-  label: string;
-  formulaType: string;
-  materialCount: number;
-  averageImpact: number | null;
-  /** baris penyusun yang sudah ter-resolve, supaya panel kalkulasi live di
-   *  editor bisa menghitung % kekuatan tanpa bolak-balik ke server */
-  lines: CalcLine[];
-  /** terisi = tidak boleh dipakai, dan ini alasannya untuk tooltip */
-  disabledReason: string | null;
-};
-
-/**
- * Versi formula milik user yang bisa dipakai sebagai komponen.
- *
- * Versi yang menyebabkan siklus atau melewati kedalaman maksimal TETAP
- * ditampilkan, tapi non-aktif dengan alasannya. Menyembunyikannya hanya
- * membuat user mencari-cari.
- */
-export async function listUsableAsSubFormula(
-  editedVersionId: string,
-): Promise<SubFormulaCandidate[]> {
-  const db = getDb();
-  const ownerId = await getOwnerId();
-
-  const { data, error } = await db
-    .from("formula_versions")
-    .select(
-      `id, version_no, formula:formulas!inner(id, name, type, owner_id, is_archived)`,
-    )
-    .eq("formula.owner_id", ownerId)
-    .eq("formula.is_archived", false)
-    .order("version_no", { ascending: false });
-
-  if (error) throw new Error(`Gagal memuat kandidat komponen: ${error.message}`);
-
-  type Row = {
-    id: string;
-    version_no: number;
-    formula: { id: string; name: string; type: string } | null;
-  };
-
-  const rows = ((data ?? []) as unknown as Row[]).filter(
-    (r) => r.formula && r.id !== editedVersionId,
-  );
-
-  const graph = await loadSubFormulaGraph();
-  const cache = new Map<string, CalcLine[]>();
-
-  const out: SubFormulaCandidate[] = [];
-  for (const row of rows) {
-    const problem = checkCandidate(graph, editedVersionId, row.id);
-    // Versi tanpa baris tidak berguna sebagai komponen, tapi tetap ditampilkan
-    // supaya user tahu dia ada dan masih kosong.
-    const lines = await resolveVersionLines(row.id, 1, cache);
-    out.push({
-      versionId: row.id,
-      formulaId: row.formula!.id,
-      label: versionLabel(row.formula!.name, row.version_no),
-      formulaType: row.formula!.type,
-      materialCount: lines.length,
-      averageImpact: aggregateImpact(lines),
-      lines,
-      disabledReason: problem
-        ? explainProblem(problem)
-        : lines.length === 0
-          ? "Versi ini masih kosong — isi dulu barisnya."
+  return [...latest.values()].map((row) => ({
+    versionId: row.id,
+    formulaId: row.formula!.id,
+    label: versionLabel(row.formula!.name, row.version_no),
+    materialCount: row.lines.length,
+    lines: row.lines
+      .slice()
+      .sort((a, b) => a.sort_order - b.sort_order)
+      .map((l) => ({
+        id: l.id,
+        tier: l.tier,
+        kind: l.line_type,
+        refId:
+          l.line_type === "raw_material"
+            ? (l.raw_material_id ?? "")
+            : l.line_type === "accord"
+              ? (l.accord_version_id ?? "")
+              : (l.fo_id ?? ""),
+        pct: Number(l.pct),
+        locked: l.is_locked,
+        userDilutionPct: Number(l.user_dilution_pct),
+        userSolventId: l.user_solvent_id,
+        sortOrder: l.sort_order,
+      })),
+    disabledReason:
+      row.formula!.id === excludeFormulaId
+        ? "Formula tidak bisa memakai dirinya sendiri sebagai accord."
+        : row.lines.length === 0
+          ? "Versi ini masih kosong — isi dulu bahannya."
           : null,
-    });
-  }
-  return out;
-}
-
-export type EditorLineSeed = {
-  lineType: "raw_material" | "fo" | "sub_formula";
-  /** id raw_material / fragrance_oil / formula_version sesuai lineType */
-  refId: string | null;
-  weightG: number;
-  dilutionPct: number;
-  solvent: string | null;
-  note: string;
-};
-
-/**
- * Baris mentah untuk editor.
- *
- * Beda dari resolveVersionLines(): di sini yang dibutuhkan adalah ID komponen
- * yang dipilih, bukan nama dan impact-nya. Editor memakai ID untuk mencocokkan
- * ke daftar picker, lalu menghitung sendiri lewat toCalcLines() dengan rumus
- * yang sama seperti server.
- */
-export async function getEditorLines(
-  versionId: string,
-): Promise<EditorLineSeed[]> {
-  const db = getDb();
-  const rows = await fetchLines(db, versionId);
-  return rows.map((r) => ({
-    lineType: r.line_type,
-    refId:
-      r.line_type === "raw_material"
-        ? r.raw_material_id
-        : r.line_type === "fo"
-          ? r.fo_id
-          : r.sub_formula_version_id,
-    weightG: Number(r.weight_g),
-    dilutionPct: Number(r.dilution_pct),
-    solvent: r.solvent,
-    note: r.note ?? "",
   }));
 }

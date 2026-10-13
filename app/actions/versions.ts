@@ -2,71 +2,78 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { describeDbError, fail, ok, type ActionResult } from "@/lib/action-result";
-import { assertNoCycle, SubFormulaError } from "@/lib/legacy/calc/cycle";
-import { loadSubFormulaGraph } from "@/lib/data/versions";
+import {
+  describeDbError,
+  fail,
+  ok,
+  type ActionResult,
+} from "@/lib/action-result";
 import { getOwnerId } from "@/lib/owner";
 import { getDb } from "@/lib/supabase/db";
 import type { FormulaVersionRow } from "@/lib/supabase/database.types";
 
 const lineInput = z
   .object({
-    line_type: z.enum(["raw_material", "fo", "sub_formula"]),
+    tier: z.enum(["top", "mid", "base", "all"]),
+    line_type: z.enum(["raw_material", "accord", "fo"]),
     raw_material_id: z.string().uuid().nullable().optional(),
+    accord_version_id: z.string().uuid().nullable().optional(),
     fo_id: z.string().uuid().nullable().optional(),
-    sub_formula_version_id: z.string().uuid().nullable().optional(),
-    weight_g: z.number().positive("Berat harus di atas 0"),
-    dilution_pct: z
+    pct: z.number().min(0, "Persen tidak boleh negatif"),
+    is_locked: z.boolean().default(false),
+    user_dilution_pct: z
       .number()
       .gt(0, "Dilusi harus di atas 0%")
-      .max(100, "Dilusi maksimal 100%"),
-    solvent: z.string().trim().nullable().optional(),
+      .max(100, "Dilusi maksimal 100%")
+      .default(100),
+    user_solvent_id: z.string().uuid().nullable().optional(),
     note: z.string().trim().nullable().optional(),
-    sort_order: z.number().int().min(0),
   })
   .superRefine((line, ctx) => {
     const refs = {
       raw_material: line.raw_material_id,
+      accord: line.accord_version_id,
       fo: line.fo_id,
-      sub_formula: line.sub_formula_version_id,
     };
     if (!refs[line.line_type]) {
       ctx.addIssue({
         code: "custom",
-        message:
-          line.line_type === "raw_material"
-            ? "Ada baris yang belum dipilih bahannya."
-            : line.line_type === "fo"
-              ? "Ada baris yang belum dipilih FO-nya."
-              : "Ada baris yang belum dipilih formulanya.",
+        message: "Ada baris yang belum dipilih bahannya.",
       });
     }
-    const filled = Object.values(refs).filter(Boolean).length;
-    if (filled > 1) {
+    if (Object.values(refs).filter(Boolean).length > 1) {
       ctx.addIssue({
         code: "custom",
         message:
           "Ada baris yang merujuk ke lebih dari satu komponen. Ganti jenis barisnya, lalu pilih ulang.",
       });
     }
+    // Pelarut wajib kalau diencerkan — tanpa itu formulanya tidak bisa
+    // direproduksi, dan pelarutnya tidak bisa ikut dijumlahkan di panel.
+    if (line.user_dilution_pct < 100 && !line.user_solvent_id) {
+      ctx.addIssue({
+        code: "custom",
+        message:
+          "Baris yang diencerkan harus dipilih pelarutnya. Tanpa itu formulanya tidak bisa dibuat ulang persis.",
+      });
+    }
   });
 
 export type LineInput = z.input<typeof lineInput>;
 
-const versionMeta = z.object({
-  label: z.string().trim().nullable().optional(),
-  change_note: z.string().trim().nullable().optional(),
-  batch_size_g: z.number().positive().optional(),
-  status: z.enum(["draft", "mixed", "evaluated", "locked"]).optional(),
-  mixed_at: z.string().nullable().optional(),
-  diluted_at: z.string().nullable().optional(),
+const draftPatch = z.object({
+  batch_g: z.number().positive().optional(),
+  top_pct: z.number().min(0).max(100).nullable().optional(),
+  mid_pct: z.number().min(0).max(100).nullable().optional(),
+  base_pct: z.number().min(0).max(100).nullable().optional(),
+  price_tier_override: z.number().positive().nullable().optional(),
+  lines: z.array(lineInput).optional(),
 });
 
-async function loadVersionOwned(
+async function loadOwnedVersion(
   versionId: string,
 ): Promise<
-  | { version: FormulaVersionRow; formulaId: string }
-  | { error: string }
+  { version: FormulaVersionRow; formulaId: string } | { error: string }
 > {
   const db = getDb();
   const ownerId = await getOwnerId();
@@ -91,77 +98,93 @@ async function loadVersionOwned(
 }
 
 /**
- * Menyimpan SELURUH baris sebuah versi dalam satu transaksi (lewat RPC
- * save_formula_lines), supaya tidak pernah ada versi yang separuh tersimpan.
+ * Autosave draf kerja.
  *
- * Siklus sub-formula diperiksa DI SINI lebih dulu, bukan dibiarkan jatuh ke
- * jaring pengaman database — karena di sini kita masih punya nama formulanya,
- * dan pesan error yang menyebut UUID tidak berguna buat siapa pun.
+ * Draf boleh berada dalam keadaan yang belum sah — piramida 105%, tier yang
+ * belum penuh — karena user memang sedang menggeser angka. Yang menolak
+ * keadaan tidak sah adalah saveVersion(), bukan ini. Memblokir di sini akan
+ * membuat autosave gagal diam-diam di tengah pengetikan dan pekerjaan user
+ * hilang tanpa dia sadari.
  */
-export async function saveLines(
+export async function saveDraft(
   versionId: string,
-  lines: LineInput[],
-): Promise<ActionResult<{ saved: number }>> {
-  const owned = await loadVersionOwned(versionId);
-  if ("error" in owned) return fail(owned.error);
+  patch: z.input<typeof draftPatch>,
+): Promise<ActionResult<{ savedLines: number }>> {
+  const parsed = draftPatch.safeParse(patch);
+  if (!parsed.success) return fail(parsed.error.issues[0].message);
+  const v = parsed.data;
 
-  if (owned.version.status === "evaluated" || owned.version.status === "locked") {
+  const owned = await loadOwnedVersion(versionId);
+  if ("error" in owned) return fail(owned.error);
+  if (owned.version.version_no !== 0) {
     return fail(
-      "Versi ini sudah dinilai, jadi barisnya tidak bisa diubah lagi. Duplikat jadi versi baru supaya catatan penciuman yang lama tetap nyambung ke formula yang benar.",
+      "Versi tersimpan tidak bisa diubah. Buka drafnya, atau simpan sebagai versi baru.",
     );
   }
 
-  const parsed = z.array(lineInput).safeParse(lines);
-  if (!parsed.success) return fail(parsed.error.issues[0].message);
+  const db = getDb();
 
-  const subIds = parsed.data
-    .map((l) => l.sub_formula_version_id)
-    .filter((x): x is string => !!x);
+  const meta = {
+    ...(v.batch_g !== undefined ? { batch_g: v.batch_g } : {}),
+    ...(v.top_pct !== undefined ? { top_pct: v.top_pct } : {}),
+    ...(v.mid_pct !== undefined ? { mid_pct: v.mid_pct } : {}),
+    ...(v.base_pct !== undefined ? { base_pct: v.base_pct } : {}),
+    ...(v.price_tier_override !== undefined
+      ? { price_tier_override: v.price_tier_override }
+      : {}),
+  };
 
-  if (subIds.length) {
-    try {
-      assertNoCycle(await loadSubFormulaGraph(), versionId, subIds);
-    } catch (e) {
-      if (e instanceof SubFormulaError) return fail(e.message);
-      throw e;
-    }
+  if (Object.keys(meta).length) {
+    const { error } = await db
+      .from("formula_versions")
+      .update(meta)
+      .eq("id", versionId);
+    if (error) return fail(describeDbError(error));
   }
 
-  const db = getDb();
-  const { data, error } = await db.rpc("save_formula_lines", {
-    p_version_id: versionId,
-    p_lines: parsed.data.map((l, i) => ({
-      line_type: l.line_type,
-      raw_material_id: l.raw_material_id ?? null,
-      fo_id: l.fo_id ?? null,
-      sub_formula_version_id: l.sub_formula_version_id ?? null,
-      weight_g: l.weight_g,
-      dilution_pct: l.dilution_pct,
-      solvent: l.solvent ?? null,
-      note: l.note ?? null,
-      sort_order: l.sort_order ?? i,
-    })),
-  });
+  let savedLines = 0;
+  if (v.lines) {
+    // Accord tidak boleh menunjuk ke versi yang sedang diedit. Siklus yang
+    // lebih dalam ditangkap expand() dan dilaporkan sebagai R12, yang
+    // memblokir "Simpan versi".
+    if (v.lines.some((l) => l.accord_version_id === versionId)) {
+      return fail("Formula tidak bisa memakai dirinya sendiri sebagai accord.");
+    }
 
-  if (error) return fail(describeDbError(error));
+    const { data, error } = await db.rpc("save_draft_lines", {
+      p_version_id: versionId,
+      p_lines: v.lines.map((l) => ({
+        tier: l.tier,
+        line_type: l.line_type,
+        raw_material_id: l.raw_material_id ?? null,
+        accord_version_id: l.accord_version_id ?? null,
+        fo_id: l.fo_id ?? null,
+        pct: l.pct,
+        is_locked: l.is_locked ?? false,
+        user_dilution_pct: l.user_dilution_pct ?? 100,
+        user_solvent_id: l.user_solvent_id ?? null,
+        note: l.note ?? null,
+      })),
+    });
+    if (error) return fail(describeDbError(error));
+    savedLines = Number(data ?? 0);
+  }
 
   revalidatePath(`/formulas/${owned.formulaId}`);
-  revalidatePath("/");
-  return ok({ saved: Number(data ?? 0) });
+  return ok({ savedLines });
 }
 
 /**
- * Versi baru di dalam formula yang sama. Nomor versinya dihitung di dalam
- * transaksi RPC, jadi tidak pernah bentrok walau dua tab menyimpan bersamaan.
+ * Membekukan draf jadi versi bernomor.
+ *
+ * Versi tersimpan adalah yang nanti dirujuk catatan penciuman, lembar timbang,
+ * dan formula lain yang memakainya sebagai accord — jadi dia tidak boleh
+ * berisi angka yang belum selesai.
  */
-export async function createVersion(
+export async function saveVersion(
   formulaId: string,
-  input: {
-    label?: string | null;
-    change_note?: string | null;
-    parent_version_id?: string | null;
-    batch_size_g?: number;
-  } = {},
+  changeNote?: string | null,
+  label?: string | null,
 ): Promise<ActionResult<{ versionId: string; versionNo: number }>> {
   const db = getDb();
   const ownerId = await getOwnerId();
@@ -175,60 +198,48 @@ export async function createVersion(
   if (fErr) return fail(describeDbError(fErr));
   if (!formula) return fail("Formula tidak ditemukan.");
 
-  const { data, error } = await db
-    .rpc("create_formula_version", {
-      p_formula_id: formulaId,
-      p_label: input.label?.trim() || null,
-      p_change_note: input.change_note?.trim() || null,
-      p_parent_version_id: input.parent_version_id ?? null,
-      p_batch_size_g: input.batch_size_g ?? 10,
-    });
+  const { count } = await db
+    .from("formula_versions")
+    .select("id", { count: "exact", head: true })
+    .eq("formula_id", formulaId)
+    .gt("version_no", 0);
 
-  if (error || !data) {
-    return fail(describeDbError(error ?? { message: "Gagal membuat versi" }));
-  }
-
-  revalidatePath(`/formulas/${formulaId}`);
-  return ok({ versionId: data.id, versionNo: data.version_no });
-}
-
-/**
- * Duplikat versi beserta SEMUA barisnya, termasuk dilusi dan pelarutnya.
- * Kalau dilusi tidak ikut tersalin, hasil duplikatnya tidak bisa direproduksi.
- *
- * Ini jalur untuk subtraction test: duplikat v3 jadi v4, hapus satu bahan,
- * lalu bandingkan.
- */
-export async function duplicateVersion(
-  versionId: string,
-  changeNote: string,
-  label?: string | null,
-): Promise<ActionResult<{ versionId: string; versionNo: number }>> {
-  if (!changeNote?.trim()) {
+  // Versi ke-2 ke atas wajib punya catatan perubahan — di situ letak
+  // pelajarannya, bukan di angkanya.
+  if ((count ?? 0) >= 1 && !changeNote?.trim()) {
     return fail(
-      "Tulis dulu apa yang kamu ubah dari versi sebelumnya. Catatan ini yang bikin kamu belajar — singkat saja.",
+      "Tulis dulu apa yang berubah dari versi sebelumnya. Singkat saja — catatan ini yang bikin kamu belajar.",
       "change_note",
     );
   }
 
-  const owned = await loadVersionOwned(versionId);
-  if ("error" in owned) return fail(owned.error);
-
-  const db = getDb();
-  const { data, error } = await db
-    .rpc("duplicate_formula_version", {
-      p_version_id: versionId,
-      p_change_note: changeNote.trim(),
-      p_label: label?.trim() || null,
-    });
+  const { data, error } = await db.rpc("save_formula_version", {
+    p_formula_id: formulaId,
+    p_change_note: changeNote?.trim() || undefined,
+    p_label: label?.trim() || undefined,
+  });
 
   if (error || !data) {
-    return fail(describeDbError(error ?? { message: "Gagal menduplikat versi" }));
+    return fail(describeDbError(error ?? { message: "Gagal menyimpan versi" }));
   }
 
-  revalidatePath(`/formulas/${owned.formulaId}`);
-  return ok({ versionId: data.id, versionNo: data.version_no });
+  const row = data as unknown as FormulaVersionRow;
+  revalidatePath(`/formulas/${formulaId}`);
+  revalidatePath("/formulas");
+  return ok({ versionId: row.id, versionNo: row.version_no });
 }
+
+// --------------------------------------------------------------------------
+// Protokol lab — modul evaluasi v1 yang tetap berlaku di v2.
+// --------------------------------------------------------------------------
+
+const versionMeta = z.object({
+  label: z.string().trim().nullable().optional(),
+  change_note: z.string().trim().nullable().optional(),
+  status: z.enum(["draft", "saved", "mixed", "evaluated", "locked"]).optional(),
+  mixed_at: z.string().nullable().optional(),
+  diluted_at: z.string().nullable().optional(),
+});
 
 export async function updateVersionMeta(
   versionId: string,
@@ -236,21 +247,10 @@ export async function updateVersionMeta(
 ): Promise<ActionResult> {
   const parsed = versionMeta.safeParse(input);
   if (!parsed.success) return fail(parsed.error.issues[0].message);
-
-  const owned = await loadVersionOwned(versionId);
-  if ("error" in owned) return fail(owned.error);
-
   const v = parsed.data;
-  if (
-    owned.version.version_no > 1 &&
-    v.change_note !== undefined &&
-    !v.change_note?.trim()
-  ) {
-    return fail(
-      "Versi ke-2 ke atas wajib punya catatan perubahan.",
-      "change_note",
-    );
-  }
+
+  const owned = await loadOwnedVersion(versionId);
+  if ("error" in owned) return fail(owned.error);
 
   const db = getDb();
   const { error } = await db
@@ -260,7 +260,6 @@ export async function updateVersionMeta(
       ...(v.change_note !== undefined
         ? { change_note: v.change_note?.trim() || null }
         : {}),
-      ...(v.batch_size_g !== undefined ? { batch_size_g: v.batch_size_g } : {}),
       ...(v.status !== undefined ? { status: v.status } : {}),
       ...(v.mixed_at !== undefined ? { mixed_at: v.mixed_at } : {}),
       ...(v.diluted_at !== undefined ? { diluted_at: v.diluted_at } : {}),
@@ -274,10 +273,7 @@ export async function updateVersionMeta(
   return ok();
 }
 
-/**
- * Menandai FASE MINYAK sudah dicampur. Dari sini mulai oil phase rest 24-48
- * jam — bahan larut sempurna antar sesamanya sebelum ketemu ethanol.
- */
+/** Fase minyak dicampur. Dari sini oil rest 24–48 jam mulai berjalan. */
 export async function markMixed(
   versionId: string,
   mixedAt?: string,
@@ -289,14 +285,14 @@ export async function markMixed(
 }
 
 /**
- * Menandai ETHANOL sudah ditambahkan. Dari sini mulai maserasi, dan dari
- * tanggal inilah umur maserasi dihitung — bukan dari mixed_at.
+ * Ethanol ditambahkan. Dari tanggal INI umur maserasi dihitung — bukan dari
+ * tanggal pencampuran fase minyak.
  */
 export async function markDiluted(
   versionId: string,
   dilutedAt?: string,
 ): Promise<ActionResult> {
-  const owned = await loadVersionOwned(versionId);
+  const owned = await loadOwnedVersion(versionId);
   if ("error" in owned) return fail(owned.error);
 
   const when = dilutedAt ?? new Date().toISOString();
@@ -313,23 +309,22 @@ export async function markDiluted(
     );
   }
 
-  return updateVersionMeta(versionId, {
-    status: owned.version.status === "draft" ? "mixed" : undefined,
-    diluted_at: when,
-  });
+  return updateVersionMeta(versionId, { diluted_at: when });
 }
 
 export async function deleteVersion(versionId: string): Promise<ActionResult> {
-  const owned = await loadVersionOwned(versionId);
+  const owned = await loadOwnedVersion(versionId);
   if ("error" in owned) return fail(owned.error);
 
-  const db = getDb();
+  if (owned.version.version_no === 0) {
+    return fail("Draf kerja tidak bisa dihapus — dia yang kamu edit.");
+  }
 
-  const { count, error: cErr } = await db
+  const db = getDb();
+  const { count } = await db
     .from("evaluations")
     .select("id", { count: "exact", head: true })
     .eq("formula_version_id", versionId);
-  if (cErr) return fail(describeDbError(cErr));
   if ((count ?? 0) > 0) {
     return fail(
       "Versi ini sudah punya catatan evaluasi, jadi tidak bisa dihapus. Catatan penciuman tidak bisa dibuat ulang.",
@@ -344,11 +339,37 @@ export async function deleteVersion(versionId: string): Promise<ActionResult> {
   if (error) {
     return fail(
       error.code === "23503"
-        ? "Versi ini dipakai sebagai komponen di formula lain, jadi tidak bisa dihapus. Lepas dulu pemakaiannya."
+        ? "Versi ini dipakai sebagai accord di formula lain, jadi tidak bisa dihapus."
         : describeDbError(error),
     );
   }
 
   revalidatePath(`/formulas/${owned.formulaId}`);
+  return ok();
+}
+
+/** Tandai bahan ada di stok sendiri — dipakai filter saran bridger. */
+export async function toggleStock(
+  materialId: string,
+  inStock: boolean,
+): Promise<ActionResult> {
+  const db = getDb();
+  const ownerId = await getOwnerId();
+
+  const { error } = inStock
+    ? await db
+        .from("user_stock")
+        .upsert(
+          { owner_id: ownerId, raw_material_id: materialId },
+          { onConflict: "owner_id,raw_material_id" },
+        )
+    : await db
+        .from("user_stock")
+        .delete()
+        .eq("owner_id", ownerId)
+        .eq("raw_material_id", materialId);
+
+  if (error) return fail(describeDbError(error));
+  revalidatePath("/materials");
   return ok();
 }

@@ -1,18 +1,14 @@
-import { Card, PageHeader } from "@/components/shared/primitives";
-import { FormulaForm } from "@/components/formula/FormulaForm";
+import { NewFormulaWizard } from "@/components/editor/NewFormulaWizard";
+import { PageHeader } from "@/components/shared/primitives";
 
 export default function NewFormulaPage() {
   return (
     <>
       <PageHeader
         title="Formula baru"
-        subtitle="Formula adalah wadahnya. Yang berisi bahan adalah versi — v1 langsung dibuat begitu kamu simpan."
+        subtitle="Mulai dari piramida: tentukan top, mid, base, lalu isi bahannya."
       />
-      <div className="max-w-[680px]">
-        <Card>
-          <FormulaForm />
-        </Card>
-      </div>
+      <NewFormulaWizard />
     </>
   );
 }

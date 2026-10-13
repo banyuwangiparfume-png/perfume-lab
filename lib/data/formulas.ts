@@ -3,24 +3,24 @@ import "server-only";
 import { getOwnerId } from "../owner";
 import { getDb } from "../supabase/db";
 import type {
+  FormulaCategoryEnum,
   FormulaRow,
-  FormulaSourceEnum,
-  FormulaTypeEnum,
   FormulaVersionRow,
 } from "../supabase/database.types";
 
 export type FormulaFilter = {
   search?: string;
-  type?: FormulaTypeEnum;
-  source?: FormulaSourceEnum;
-  targetCategory?: string;
+  category?: FormulaCategoryEnum;
+  targetFamily?: string;
   archived?: boolean;
 };
 
 export type FormulaCard = FormulaRow & {
+  /** jumlah versi TERSIMPAN; draf tidak dihitung */
   versionCount: number;
   latestVersion: FormulaVersionRow | null;
-  evaluationCount: number;
+  draft: FormulaVersionRow | null;
+  lineCount: number;
 };
 
 export async function listFormulas(
@@ -31,14 +31,13 @@ export async function listFormulas(
 
   let q = db
     .from("formulas")
-    .select("*, versions:formula_versions(*)")
+    .select("*, versions:formula_versions(*, lines:formula_lines(id))")
     .eq("owner_id", ownerId)
     .eq("is_archived", filter.archived ?? false)
     .order("updated_at", { ascending: false });
 
-  if (filter.type) q = q.eq("type", filter.type);
-  if (filter.source) q = q.eq("source", filter.source);
-  if (filter.targetCategory) q = q.eq("target_category", filter.targetCategory);
+  if (filter.category) q = q.eq("category", filter.category);
+  if (filter.targetFamily) q = q.eq("target_family", filter.targetFamily);
   if (filter.search) {
     const s = filter.search.replace(/[%,()]/g, " ").trim();
     if (s) q = q.ilike("name", `%${s}%`);
@@ -47,56 +46,35 @@ export async function listFormulas(
   const { data, error } = await q;
   if (error) throw new Error(`Gagal memuat daftar formula: ${error.message}`);
 
-  type Row = FormulaRow & { versions: FormulaVersionRow[] };
-  const rows = (data ?? []) as unknown as Row[];
+  type Row = FormulaRow & {
+    versions: (FormulaVersionRow & { lines: { id: string }[] })[];
+  };
 
-  const versionIds = rows.flatMap((f) => f.versions.map((v) => v.id));
-  const evalCounts = await countEvaluationsByVersion(versionIds);
-
-  return rows.map((f) => {
-    const sorted = f.versions
-      .slice()
+  return ((data ?? []) as unknown as Row[]).map((f) => {
+    const { versions, ...formula } = f;
+    const saved = versions
+      .filter((v) => v.version_no > 0)
       .sort((a, b) => b.version_no - a.version_no);
-    const { versions: _versions, ...formula } = f;
+    const draft = versions.find((v) => v.version_no === 0) ?? null;
+
+    // Jumlah bahan diambil dari apa yang sedang dikerjakan: draf kalau ada
+    // isinya, kalau tidak versi tersimpan terakhir.
+    const counted =
+      draft && draft.lines.length ? draft : (saved[0] ?? draft);
+
     return {
       ...formula,
-      versionCount: sorted.length,
-      latestVersion: sorted[0] ?? null,
-      evaluationCount: sorted.reduce(
-        (a, v) => a + (evalCounts.get(v.id) ?? 0),
-        0,
-      ),
+      versionCount: saved.length,
+      latestVersion: saved[0] ?? null,
+      draft,
+      lineCount: counted?.lines.length ?? 0,
     };
   });
 }
 
-async function countEvaluationsByVersion(
-  versionIds: string[],
-): Promise<Map<string, number>> {
-  if (!versionIds.length) return new Map();
-  const db = getDb();
-  const { data, error } = await db
-    .from("evaluations")
-    .select("formula_version_id")
-    .in("formula_version_id", versionIds);
-  if (error) throw new Error(`Gagal menghitung evaluasi: ${error.message}`);
-
-  const out = new Map<string, number>();
-  for (const row of data ?? []) {
-    out.set(
-      row.formula_version_id,
-      (out.get(row.formula_version_id) ?? 0) + 1,
-    );
-  }
-  return out;
-}
-
-export async function getFormula(id: string): Promise<
-  | (FormulaRow & {
-      versions: FormulaVersionRow[];
-    })
-  | null
-> {
+export async function getFormula(
+  id: string,
+): Promise<(FormulaRow & { versions: FormulaVersionRow[] }) | null> {
   const db = getDb();
   const ownerId = await getOwnerId();
 
@@ -113,16 +91,13 @@ export async function getFormula(id: string): Promise<
   const row = data as unknown as FormulaRow & { versions: FormulaVersionRow[] };
   return {
     ...row,
-    versions: row.versions
-      .slice()
-      .sort((a, b) => b.version_no - a.version_no),
+    versions: row.versions.slice().sort((a, b) => b.version_no - a.version_no),
   };
 }
 
 /**
- * Versi yang dipilih secara default saat membuka detail formula:
- * versi tertinggi. Kalau user memilih versi lain lewat dropdown, pilihannya
- * yang menang.
+ * Versi yang dibuka saat user masuk ke detail formula: versi tersimpan
+ * tertinggi, atau draf kalau belum ada versi tersimpan sama sekali.
  */
 export function pickVersion(
   versions: FormulaVersionRow[],
@@ -133,7 +108,11 @@ export function pickVersion(
     const found = versions.find((v) => v.id === requestedId);
     if (found) return found;
   }
-  return versions.reduce((a, b) => (b.version_no > a.version_no ? b : a));
+  const saved = versions.filter((v) => v.version_no > 0);
+  if (saved.length) {
+    return saved.reduce((a, b) => (b.version_no > a.version_no ? b : a));
+  }
+  return versions.find((v) => v.version_no === 0) ?? versions[0];
 }
 
 export async function formulaStats() {
@@ -145,20 +124,19 @@ export async function formulaStats() {
   monthStart.setHours(0, 0, 0, 0);
   const since = monthStart.toISOString();
 
-  const [formulas, versions, evaluations] = await Promise.all([
+  const [fragrance, accord, evaluations] = await Promise.all([
     db
       .from("formulas")
       .select("id", { count: "exact", head: true })
       .eq("owner_id", ownerId)
-      .eq("is_archived", false),
+      .eq("is_archived", false)
+      .eq("category", "fragrance"),
     db
-      .from("formula_versions")
-      .select("id, formula:formulas!inner(owner_id)", {
-        count: "exact",
-        head: true,
-      })
-      .eq("formula.owner_id", ownerId)
-      .gte("created_at", since),
+      .from("formulas")
+      .select("id", { count: "exact", head: true })
+      .eq("owner_id", ownerId)
+      .eq("is_archived", false)
+      .eq("category", "accord"),
     db
       .from("evaluations")
       .select("id", { count: "exact", head: true })
@@ -166,20 +144,60 @@ export async function formulaStats() {
       .gte("created_at", since),
   ]);
 
-  for (const r of [formulas, versions, evaluations]) {
+  for (const r of [fragrance, accord, evaluations]) {
     if (r.error) throw new Error(`Gagal memuat statistik: ${r.error.message}`);
   }
 
   return {
-    formulaCount: formulas.count ?? 0,
-    versionsThisMonth: versions.count ?? 0,
+    fragranceCount: fragrance.count ?? 0,
+    accordCount: accord.count ?? 0,
     evaluationsThisMonth: evaluations.count ?? 0,
   };
 }
 
-/** Formula yang baru diubah — daftar di dashboard. */
+/** Formula yang baru diubah — kartu "Terakhir diedit" di dashboard. */
 export async function recentFormulas(limit = 5): Promise<FormulaCard[]> {
-  const all = await listFormulas();
-  return all.slice(0, limit);
+  return (await listFormulas()).slice(0, limit);
 }
 
+/** Accord ini dipakai di formula mana saja — ditampilkan di detail accord. */
+export async function accordUsage(formulaId: string) {
+  const db = getDb();
+  const ownerId = await getOwnerId();
+
+  const { data: versions } = await db
+    .from("formula_versions")
+    .select("id")
+    .eq("formula_id", formulaId);
+  const ids = (versions ?? []).map((v) => v.id);
+  if (!ids.length) return [];
+
+  const { data, error } = await db
+    .from("formula_lines")
+    .select(
+      `accord_version_id,
+       version:formula_versions!formula_lines_formula_version_id_fkey(
+         id, version_no, formula:formulas(id, name, owner_id)
+       )`,
+    )
+    .in("accord_version_id", ids);
+
+  if (error) throw new Error(`Gagal memuat pemakaian accord: ${error.message}`);
+
+  type Row = {
+    version: {
+      id: string;
+      version_no: number;
+      formula: { id: string; name: string; owner_id: string } | null;
+    } | null;
+  };
+
+  const seen = new Map<string, { formulaId: string; name: string }>();
+  for (const row of (data ?? []) as unknown as Row[]) {
+    const f = row.version?.formula;
+    if (!f || f.owner_id !== ownerId) continue;
+    if (f.id === formulaId) continue;
+    seen.set(f.id, { formulaId: f.id, name: f.name });
+  }
+  return [...seen.values()];
+}

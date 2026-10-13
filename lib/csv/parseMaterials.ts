@@ -128,7 +128,7 @@ export type ParsedMaterial = {
   function_category: FunctionCategoryEnum | null;
   odor_impact: number | null;
   tgsc_url: string | null
-  prices: { tier_grams: number; price_idr: number }[];
+  prices: { tier_size: number; price_idr: number }[];
 };
 
 export type ParseFailure = { line: number; reason: string; raw: string };
@@ -259,7 +259,7 @@ export function parseMaterialRows(
       functionCategory = mapped;
     }
 
-    const prices: { tier_grams: number; price_idr: number }[] = [];
+    const prices: { tier_size: number; price_idr: number }[] = [];
     let priceFailed = false;
     for (const tier of PRICE_TIERS) {
       const value = parseNumber(pick(row, tier.column));
@@ -273,7 +273,7 @@ export function parseMaterialRows(
         break;
       }
       if (value != null && value > 0) {
-        prices.push({ tier_grams: tier.grams, price_idr: value });
+        prices.push({ tier_size: tier.grams, price_idr: value });
       }
     }
     if (priceFailed) return;

@@ -21,7 +21,7 @@ export type MaterialListItem = MaterialWithPrices & {
   priceTierG: number | null;
 };
 
-const PRICE_SELECT = "tier_grams, price_idr, effective_date";
+const PRICE_SELECT = "tier_size, price_idr, effective_date";
 
 export const effectiveImpact = (m: {
   odor_impact: number | null;
@@ -117,7 +117,7 @@ export async function getMaterial(
     .sort(
       (a, b) =>
         b.effective_date.localeCompare(a.effective_date) ||
-        Number(a.tier_grams) - Number(b.tier_grams),
+        Number(a.tier_size) - Number(b.tier_size),
     );
 
   return { ...decorate(data as unknown as MaterialWithPrices), allPrices };

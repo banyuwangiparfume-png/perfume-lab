@@ -56,14 +56,14 @@ export default async function DashboardPage() {
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatTile
           icon={FlaskConical}
-          value={stats.formulaCount}
-          label="Total formula"
+          value={stats.fragranceCount}
+          label="Fragrance"
           href="/formulas"
         />
         <StatTile
           icon={GitBranch}
-          value={stats.versionsThisMonth}
-          label="Versi bulan ini"
+          value={stats.accordCount}
+          label="Accord saya"
         />
         <StatTile
           icon={ClipboardList}

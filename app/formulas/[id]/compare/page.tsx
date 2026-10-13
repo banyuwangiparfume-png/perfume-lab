@@ -22,7 +22,7 @@ import {
 } from "@/lib/data/evaluations";
 import { runCompareRules, type CompareSubject } from "@/lib/rules/compare";
 import { getFormula } from "@/lib/data/formulas";
-import { resolveVersionLines } from "@/lib/data/versions";
+import { getVersionDetail } from "@/lib/data/versions";
 import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -81,11 +81,11 @@ export default async function ComparePage({
 
   const columns = await Promise.all(
     selected.map(async (version) => {
-      const lines = await resolveVersionLines(version.id);
-      const [evaluations] = await Promise.all([
+      const [detail, evaluations] = await Promise.all([
+        getVersionDetail(version.id, { skipBridges: true }),
         listEvaluationsForVersion(version.id),
       ]);
-      return { version, analysis: analyze(lines), evaluations };
+      return { version, analysis: detail?.analysis ?? null, evaluations };
     }),
   );
 
@@ -101,32 +101,32 @@ export default async function ComparePage({
   // tampil di satu baris walau id barisnya berbeda.
   const labels: string[] = [];
   for (const col of columns) {
-    for (const row of col.analysis.display.rows) {
-      if (!labels.includes(row.label)) labels.push(row.label);
+    for (const row of (col.analysis?.strength.rows ?? [])) {
+      if (!labels.includes(row.name)) labels.push(row.name);
     }
   }
 
   const rows: DiffRow[] = labels.map((label) => ({
     label,
     shares: columns.map((col) => {
-      const matching = col.analysis.display.rows.filter(
-        (r) => r.label === label,
+      const matching = (col.analysis?.strength.rows ?? []).filter(
+        (r) => r.name === label,
       );
       return matching.length
-        ? matching.reduce((a, r) => a + r.neatPct, 0)
+        ? matching.reduce((a, r) => a + r.productPct, 0)
         : null;
     }),
     weights: columns.map((col) => {
-      const matching = col.analysis.display.rows.filter(
-        (r) => r.label === label,
+      const matching = (col.analysis?.strength.rows ?? []).filter(
+        (r) => r.name === label,
       );
       return matching.length
-        ? matching.reduce((a, r) => a + r.weightG, 0)
+        ? matching.reduce((a, r) => a + r.productPct, 0)
         : null;
     }),
     strengths: columns.map((col) => {
-      const matching = col.analysis.display.rows.filter(
-        (r) => r.label === label && r.strengthPct != null,
+      const matching = (col.analysis?.strength.rows ?? []).filter(
+        (r) => r.name === label && r.strengthPct != null,
       );
       return matching.length
         ? matching.reduce((a, r) => a + (r.strengthPct ?? 0), 0)
@@ -248,10 +248,10 @@ export default async function ComparePage({
             </tbody>
             <tfoot>
               <tr className="bg-[var(--surface-muted)] text-[13px] font-semibold">
-                <td className="px-3 py-2">Total timbang</td>
+                <td className="px-3 py-2">Total persen</td>
                 {columns.map((col) => (
                   <td key={col.version.id} className="numeric px-3 py-2">
-                    {fmtGram(col.analysis.display.totals.weighedG)} g
+                    {fmtPct(col.analysis?.strength.rows.reduce((a, r) => a + r.productPct, 0) ?? 0)}
                   </td>
                 ))}
               </tr>
@@ -261,7 +261,7 @@ export default async function ComparePage({
                 </td>
                 {columns.map((col) => (
                   <td key={col.version.id} className="numeric px-3 py-2">
-                    {fmtPct(col.analysis.display.strengthBasis)}
+                    {fmtPct(col.analysis?.coverage ?? 0)}
                   </td>
                 ))}
               </tr>
@@ -312,11 +312,11 @@ export default async function ComparePage({
                 <p className="mb-1 text-[12px] font-medium text-[var(--text-muted)]">
                   Kekuatan tertinggi
                 </p>
-                {col.analysis.display.lead ? (
+                {col.analysis?.strength.rows[0] ? (
                   <p>
-                    {col.analysis.display.lead.label}{" "}
+                    {col.analysis.strength.rows[0].name}{" "}
                     <span className="numeric text-[var(--text-muted)]">
-                      {fmtPct(col.analysis.display.lead.share)}
+                      {fmtPct(col.analysis.strength.rows[0].strengthPct ?? 0)}
                     </span>
                   </p>
                 ) : (

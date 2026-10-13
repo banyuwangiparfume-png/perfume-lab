@@ -72,6 +72,15 @@
   --color-row-fo: var(--row-fo);
   --color-row-subformula: var(--row-subformula);
 
+  --color-tier-top: var(--tier-top);
+  --color-tier-top-soft: var(--tier-top-soft);
+  --color-tier-mid: var(--tier-mid);
+  --color-tier-mid-soft: var(--tier-mid-soft);
+  --color-tier-base: var(--tier-base);
+  --color-tier-base-soft: var(--tier-base-soft);
+  --color-tier-all: var(--tier-all);
+  --color-tier-all-soft: var(--tier-all-soft);
+
   --shadow-card: 0 1px 2px rgb(16 24 40 / 0.06), 0 1px 3px rgb(16 24 40 / 0.1);
   --shadow-card-lg: 0 4px 12px rgb(16 24 40 / 0.08);
 }
@@ -145,6 +154,42 @@
   --chart-3: var(--fn-bridger);
   --chart-4: var(--fn-fixative);
   --chart-5: var(--text-subtle);
+
+  /* Tier piramida — dipakai di header kartu tier, visual piramida, dan
+     toggle pie per tier. */
+  --tier-top:       #0ea5b7;
+  --tier-top-soft:  #e0f6f8;
+  --tier-mid:       #8b5cf6;
+  --tier-mid-soft:  #efe9fe;
+  --tier-base:      #b7791f;
+  --tier-base-soft: #f7eedf;
+  --tier-all:       #5c6672;
+  --tier-all-soft:  #f0f2f5;
+
+  /* Facet aroma. Warna TETAP per facet di seluruh aplikasi — user lama-lama
+     hafal "ungu = floral" tanpa membaca legenda. Sumber kebenarannya tabel
+     facets di database; nilai di sini cadangan untuk render sebelum data ada. */
+  --facet-citrus:   #e5b100;
+  --facet-green:    #4f9d3a;
+  --facet-aromatic: #2f9c8f;
+  --facet-fruity:   #e8668a;
+  --facet-floral:   #b04fa0;
+  --facet-rose:     #d94a64;
+  --facet-white:    #9b7fd1;
+  --facet-powdery:  #a99cc9;
+  --facet-clean:    #6fb0e0;
+  --facet-aquatic:  #1f7fc4;
+  --facet-spicy:    #d2691e;
+  --facet-woody:    #8b5a2b;
+  --facet-earthy:   #6b7b3a;
+  --facet-amber:    #c98a1b;
+  --facet-resin:    #9c4a2f;
+  --facet-gourmand: #a8743f;
+  --facet-creamy:   #d9b98c;
+  --facet-musk:     #7d8ba8;
+  --facet-animalic: #5a3e36;
+  --facet-smoky:    #4a4f57;
+  --facet-other:    #c3c9d0;
 
   --radius: 12px;
 }

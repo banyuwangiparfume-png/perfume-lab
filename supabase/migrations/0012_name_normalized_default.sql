@@ -1,0 +1,11 @@
+-- 0012_name_normalized_default.sql
+--
+-- `raw_materials.name_normalized` selalu diisi oleh trigger
+-- raw_materials_normalize_name sebelum insert maupun update, jadi pemanggil
+-- tidak pernah perlu mengirimkannya.
+--
+-- Tanpa default, kolom NOT NULL ini terbaca sebagai "wajib diisi" oleh tipe
+-- hasil `supabase gen types`, dan setiap insert jadi harus mengirim nilai
+-- palsu yang langsung ditimpa trigger. Default kosong membuat tipenya jujur:
+-- kolom ini urusan database, bukan urusan aplikasi.
+alter table raw_materials alter column name_normalized set default '';

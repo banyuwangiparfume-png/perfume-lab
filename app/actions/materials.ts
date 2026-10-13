@@ -184,17 +184,17 @@ export async function setMaterialActive(
 
 export async function upsertPrices(
   materialId: string,
-  tiers: { tier_grams: number; price_idr: number }[],
+  tiers: { tier_size: number; price_idr: number }[],
   effectiveDate?: string,
 ): Promise<ActionResult> {
   const db = getDb();
   const date = effectiveDate ?? new Date().toISOString().slice(0, 10);
 
   const rows = tiers
-    .filter((t) => t.tier_grams > 0 && t.price_idr >= 0)
+    .filter((t) => t.tier_size > 0 && t.price_idr >= 0)
     .map((t) => ({
       raw_material_id: materialId,
-      tier_grams: t.tier_grams,
+      tier_size: t.tier_size,
       price_idr: t.price_idr,
       effective_date: date,
     }));
@@ -205,7 +205,7 @@ export async function upsertPrices(
   // dihapus — riwayat harga berguna untuk melihat pergerakan biaya.
   const { error } = await db
     .from("rm_prices")
-    .upsert(rows, { onConflict: "raw_material_id,tier_grams,effective_date" });
+    .upsert(rows, { onConflict: "raw_material_id,tier_size,effective_date" });
 
   if (error) return fail(describeDbError(error));
 
@@ -378,7 +378,7 @@ export async function importMaterialsCsv(
     if (!id) return [];
     return r.prices.map((p) => ({
       raw_material_id: id,
-      tier_grams: p.tier_grams,
+      tier_size: p.tier_size,
       price_idr: p.price_idr,
       effective_date: today,
     }));
@@ -388,7 +388,7 @@ export async function importMaterialsCsv(
     const { error } = await db
       .from("rm_prices")
       .upsert(batch, {
-        onConflict: "raw_material_id,tier_grams,effective_date",
+        onConflict: "raw_material_id,tier_size,effective_date",
       });
     if (error) return fail(`Gagal menyimpan harga: ${describeDbError(error)}`);
   }

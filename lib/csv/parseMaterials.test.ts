@@ -58,7 +58,7 @@ describe("parseMaterialRows", () => {
       function_category: "modifier",
       odor_impact: 400,
     });
-    expect(rows[0].prices).toEqual([{ tier_grams: 500, price_idr: 7_524_000 }]);
+    expect(rows[0].prices).toEqual([{ tier_size: 500, price_idr: 7_524_000 }]);
   });
 
   it("impact kosong disimpan sebagai null, bukan 0", () => {
