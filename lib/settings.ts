@@ -22,6 +22,13 @@ export const DEFAULT_SETTINGS: Settings = {
   bridgeThresholds: { connected: 0.45, loose: 0.2 },
   solventWarn: { singlePct: 10, totalPct: 25 },
   dominance: { minStrengthPct: 20, ratio: 3 },
+  /*
+    Ambang fixative sengaja rendah. Tugasnya menangkap formula yang benar-benar
+    tidak punya penahan, bukan memaksakan satu mazhab komposisi — berapa persen
+    fixative yang "benar" sangat bergantung pada gaya dan jenis parfumnya, dan
+    aplikasi ini tidak berhak memutuskannya.
+  */
+  functionMix: { fixativeWarnPct: 5, minCoveragePct: 50, minMaterials: 3 },
   supplierSolventTokens: {
     TEC: null,
     BB: null,
@@ -44,6 +51,7 @@ export function mergeSettings(patch: Partial<Settings> | null): Settings {
     },
     solventWarn: { ...DEFAULT_SETTINGS.solventWarn, ...patch.solventWarn },
     dominance: { ...DEFAULT_SETTINGS.dominance, ...patch.dominance },
+    functionMix: { ...DEFAULT_SETTINGS.functionMix, ...patch.functionMix },
     supplierSolventTokens: {
       ...DEFAULT_SETTINGS.supplierSolventTokens,
       ...patch.supplierSolventTokens,

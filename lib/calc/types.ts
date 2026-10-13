@@ -91,6 +91,14 @@ export type Settings = {
   bridgeThresholds: { connected: number; loose: number };
   solventWarn: { singlePct: number; totalPct: number };
   dominance: { minStrengthPct: number; ratio: number };
+  functionMix: {
+    /** di bawah ini, porsi fixative dilaporkan sebagai catatan */
+    fixativeWarnPct: number;
+    /** di bawah ini, kategori fungsi dianggap belum cukup untuk dinilai */
+    minCoveragePct: number;
+    /** formula sekecil ini belum pantas dinilai komposisi perannya */
+    minMaterials: number;
+  };
   supplierSolventTokens: Record<string, string | null>;
 };
 

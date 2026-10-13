@@ -7,6 +7,7 @@ import {
 } from "./bridge";
 import { costBreakdown, type CostBreakdown } from "./cost";
 import { expand, ExpandError, mergeByMaterial, type MergedItem } from "./expand";
+import { functionMix, type FunctionMix } from "./functions";
 import { lineTable, type LineTable } from "./lines";
 import { runRules, type Warning } from "./rules";
 import { solventReport, type SolventReport } from "./solvents";
@@ -24,6 +25,8 @@ export type Analysis = {
   /** komposisi per baris yang diketik user — untuk dibaca, bukan dihitung ulang */
   lines: LineTable;
   strength: StrengthResult;
+  /** komposisi peran bahan: diffuser / modifier / bridger / fixative */
+  functions: FunctionMix;
   realPyramid: RealPyramidRow[];
   aroma: Record<Tier, AromaPie>;
   solvents: SolventReport;
@@ -79,6 +82,7 @@ export function analyze(
 
   const strength = strengthTable(ctx, items);
   const lines = lineTable(ctx, items);
+  const functions = functionMix(strength);
   const pyramid = realPyramid(ctx, items);
   const solvents = solventReport(ctx, items);
   const cost = costBreakdown(ctx, items);
@@ -89,6 +93,7 @@ export function analyze(
     realPyramid: pyramid,
     solvents,
     cost,
+    functionMix: functions,
     expandError,
   });
 
@@ -120,6 +125,7 @@ export function analyze(
     merged: mergeByMaterial(items),
     lines,
     strength,
+    functions,
     realPyramid: pyramid,
     aroma,
     solvents,

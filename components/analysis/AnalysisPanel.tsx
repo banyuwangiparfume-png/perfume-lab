@@ -13,13 +13,21 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { Analysis } from "@/lib/calc/analyze";
 import type { BridgeStatus, BridgeSuggestion } from "@/lib/calc/bridge";
+import { FUNCTION_HINTS, UNKNOWN_KEY } from "@/lib/calc/functions";
 import { fmtGram, fmtIdr, fmtNum, fmtPct } from "@/lib/calc/format";
 import { RULES_FOOTER, RULES_HEALTHY, type Warning } from "@/lib/calc/rules";
 import type { FormulaContext, Tier } from "@/lib/calc/types";
 import { PYRAMID_TIERS, TIER_META, facetColor } from "@/lib/tiers";
 import { cn } from "@/lib/utils";
 
-type TabKey = "ringkasan" | "aroma" | "kekuatan" | "pelarut" | "hpp" | "bridger";
+type TabKey =
+  | "ringkasan"
+  | "aroma"
+  | "kekuatan"
+  | "fungsi"
+  | "pelarut"
+  | "hpp"
+  | "bridger";
 
 const LEVEL: Record<
   Warning["level"],
@@ -669,6 +677,7 @@ export function AnalysisPanel({
           </TabsTrigger>
           <TabsTrigger value="aroma">Aroma</TabsTrigger>
           <TabsTrigger value="kekuatan">Kekuatan</TabsTrigger>
+          <TabsTrigger value="fungsi">Fungsi</TabsTrigger>
           <TabsTrigger value="pelarut">Pelarut</TabsTrigger>
           <TabsTrigger value="hpp">HPP</TabsTrigger>
           <TabsTrigger value="bridger">Bridger</TabsTrigger>
@@ -698,6 +707,7 @@ export function AnalysisPanel({
 
       {tab === "aroma" && <AromaTab analysis={analysis} />}
       {tab === "kekuatan" && <StrengthTab analysis={analysis} />}
+      {tab === "fungsi" && <FunctionTab analysis={analysis} />}
       {tab === "pelarut" && (
         <SolventTab analysis={analysis} onApply={onApplySolvent} />
       )}
@@ -710,6 +720,103 @@ export function AnalysisPanel({
 
       <p className="border-t border-[var(--border)] pt-2 text-[11px] leading-relaxed text-[var(--text-subtle)]">
         {RULES_FOOTER}
+      </p>
+    </div>
+  );
+}
+
+/**
+ * Komposisi peran bahan.
+ *
+ * Menjawab pertanyaan yang tidak dijawab panel lain: apakah formula ini punya
+ * yang membawanya keluar dari kulit, dan punya yang menahannya supaya tidak
+ * hilang duluan. Sengaja cuma memperlihatkan — tidak ada "porsi yang benar"
+ * untuk diberitahukan, karena memang tidak ada.
+ */
+function FunctionTab({ analysis }: { analysis: Analysis }) {
+  const mix = analysis.functions;
+
+  if (!mix.rows.length) {
+    return (
+      <p className="text-[13px] text-[var(--text-muted)]">
+        Belum ada bahan pewangi yang bisa dinilai. Pelarut dan FO tidak dihitung
+        di sini.
+      </p>
+    );
+  }
+
+  const color: Record<string, string> = {
+    diffuser: "var(--facet-citrus, #e0a93b)",
+    modifier: "var(--brand)",
+    bridger: "var(--facet-floral, #c2559b)",
+    fixative: "var(--facet-woody, #8a6d2f)",
+    [UNKNOWN_KEY]: "var(--text-subtle)",
+  };
+
+  return (
+    <div className="space-y-3">
+      {/* Satu batang utuh: proporsi antar peran lebih mudah dibaca
+          berdampingan daripada sebagai lima angka terpisah. */}
+      <div className="flex h-2.5 overflow-hidden rounded-full bg-[var(--surface-muted)]">
+        {mix.rows.map((row) => (
+          <span
+            key={row.key}
+            className="block h-full first:rounded-l-full last:rounded-r-full"
+            style={{
+              width: `${row.pct}%`,
+              backgroundColor: color[row.key] ?? "var(--text-subtle)",
+            }}
+            title={`${row.label} ${fmtPct(row.pct)}`}
+          />
+        ))}
+      </div>
+
+      <ul className="divide-y divide-[var(--border)]">
+        {mix.rows.map((row) => (
+          <li key={row.key} className="py-2.5 first:pt-0">
+            <div className="flex items-baseline gap-2">
+              <span
+                aria-hidden
+                className="size-2 shrink-0 rounded-full"
+                style={{ backgroundColor: color[row.key] ?? "var(--text-subtle)" }}
+              />
+              <span className="text-[13px] font-medium">{row.label}</span>
+              <span className="numeric ml-auto text-[13px] font-semibold">
+                {fmtPct(row.pct)}
+              </span>
+              <span className="numeric w-20 text-[12px] text-[var(--text-muted)]">
+                {fmtPct(row.strengthPct)} kekuatan
+              </span>
+            </div>
+
+            {FUNCTION_HINTS[row.key] && (
+              <p className="ml-4 text-[11px] text-[var(--text-subtle)]">
+                {FUNCTION_HINTS[row.key]}
+              </p>
+            )}
+            <p className="ml-4 text-[11px] leading-relaxed text-[var(--text-muted)]">
+              {row.materials.join(" · ")}
+            </p>
+          </li>
+        ))}
+      </ul>
+
+      {/* Ke mana sisa persennya pergi — supaya tidak dicari-cari. */}
+      <p className="border-t border-[var(--border)] pt-2 text-[11px] leading-relaxed text-[var(--text-subtle)]">
+        Persen dihitung dari bahan pewangi saja.
+        {mix.excluded.solventPct > 0 && (
+          <> Pelarut {fmtPct(mix.excluded.solventPct)} tidak ikut.</>
+        )}
+        {mix.excluded.foPct > 0 && (
+          <> FO {fmtPct(mix.excluded.foPct)} tidak ikut — isinya tidak diketahui.</>
+        )}
+        {mix.coverage < 100 && (
+          <>
+            {" "}
+            {fmtPct(100 - mix.coverage)} bahan belum punya kategori fungsi, jadi
+            angka di atas belum utuh.
+          </>
+        )}
       </p>
     </div>
   );

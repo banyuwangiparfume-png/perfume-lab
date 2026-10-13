@@ -3,6 +3,7 @@ import type { CostBreakdown } from "./cost";
 import type { SolventReport } from "./solvents";
 import type { RealPyramidRow, StrengthResult } from "./strength";
 import { sum, type FormulaContext, type Tier } from "./types";
+import { shareOf, type FunctionMix } from "./functions";
 
 export type WarningLevel = "info" | "warning" | "critical";
 
@@ -35,12 +36,13 @@ export type RulesInput = {
   realPyramid: RealPyramidRow[];
   solvents: SolventReport;
   cost: CostBreakdown;
+  functionMix: FunctionMix;
   /** terisi kalau expand() melempar — accord bersiklus atau terlalu dalam */
   expandError?: { message: string } | null;
 };
 
 /**
- * Rule engine v2 (R1–R12).
+ * Rule engine v2 (R1–R13).
  *
  * Nadanya memberi tahu, bukan menghakimi: "Indole kemungkinan akan
  * mendominasi", bukan "formula kamu salah". Hanya R2 dan R12 yang benar-benar
@@ -222,6 +224,42 @@ export function runRules(input: RulesInput): Warning[] {
       level: "info",
       message: `${row.name} ada langsung (${pct(row.weighPct)}%) dan ikut masuk dari accord (+${pct(row.viaAccordPct)}%) — totalnya ${pct(row.productPct)}%.`,
     });
+  }
+
+  // R13 — peran fixative di dalam formula.
+  //
+  // Bridger menjawab "dua sisi ini tidak nyambung". Ini menjawab pertanyaan
+  // lain yang sebelumnya tidak dijawab panel mana pun: apakah ada yang menahan
+  // formula ini supaya tidak hilang duluan.
+  //
+  // Sengaja TIDAK memaksakan satu mazhab komposisi. Formula kecil dilewati,
+  // dan kalau kategori fungsinya sendiri belum terisi, yang dilaporkan adalah
+  // datanya yang kurang — bukan formulanya yang salah.
+  const fx = settings.functionMix;
+  if (input.functionMix.materialCount >= fx.minMaterials) {
+    const mix = input.functionMix;
+    const fixative = shareOf(mix, "fixative");
+
+    if (mix.coverage < fx.minCoveragePct) {
+      out.push({
+        code: "R13",
+        level: "info",
+        message: `Cuma ${pct(mix.coverage)}% bahan yang punya kategori fungsi, jadi porsi fixative belum bisa dinilai. Lengkapi kategorinya di halaman bahan.`,
+      });
+    } else if (fixative <= PCT_EPSILON) {
+      out.push({
+        code: "R13",
+        level: "warning",
+        message:
+          "Belum ada bahan berkategori Fixative. Tidak ada yang menahan bahan ringan, jadi drydown-nya akan sependek bahan paling cepat menguap.",
+      });
+    } else if (fixative < fx.fixativeWarnPct) {
+      out.push({
+        code: "R13",
+        level: "info",
+        message: `Fixative cuma ${pct(fixative)}% dari bahan pewangi, di bawah ambang ${pct(fx.fixativeWarnPct)}%. Drydown-nya bisa pendek — naikkan kalau memang mau bertahan lama.`,
+      });
+    }
   }
 
   return out;
