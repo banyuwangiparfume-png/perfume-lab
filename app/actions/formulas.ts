@@ -93,6 +93,11 @@ export async function createFormula(
     .single();
 
   if (dErr || !draft) {
+    // Dua insert tanpa transaksi: kalau yang kedua gagal, row formula-nya
+    // sudah terlanjur ada. Formula tanpa draf tidak bisa dibuka editornya dan
+    // tidak bisa dihapus dari UI — jadi dia harus dibatalkan di sini,
+    // bukan ditinggalkan sebagai sampah yang membingungkan.
+    await db.from("formulas").delete().eq("id", formula.id);
     return fail(describeDbError(dErr ?? { message: "Gagal membuat draf" }));
   }
 
