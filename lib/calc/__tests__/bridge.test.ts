@@ -185,3 +185,50 @@ describe("saran bridger membawa tier tujuannya sendiri", () => {
     for (const s of pair!.suggestions) expect(s.tier).toBe("mid");
   });
 });
+
+describe("bridger dalam tier", () => {
+  const ctx = fixtureContext();
+  const result = analyze(ctx);
+
+  it("pasangan yang sudah nyambung tidak ditampilkan", () => {
+    // Yang perlu perhatian cuma yang renggang atau berjurang; menampilkan yang
+    // sudah nyambung membuat daftarnya penuh dan akhirnya diabaikan.
+    for (const pair of result.bridges.withinTier) {
+      expect(pair.status).not.toBe("connected");
+    }
+  });
+
+  it("diurut dari yang paling renggang", () => {
+    const sims = result.bridges.withinTier.map((p) => p.sim);
+    expect([...sims].sort((a, b) => a - b)).toEqual(sims);
+  });
+
+  it("kedua sisi pasangan adalah baris yang berbeda di tier yang sama", () => {
+    for (const pair of result.bridges.withinTier) {
+      expect(pair.a.lineId).not.toBe(pair.b.lineId);
+      for (const lineId of [pair.a.lineId, pair.b.lineId]) {
+        const line = ctx.version.lines.find((l) => l.id === lineId);
+        expect(line?.tier).toBe(pair.tier);
+      }
+    }
+  });
+
+  it("sarannya masuk ke tier pasangan itu sendiri", () => {
+    // Memindahkan jembatan antara dua bahan Mid ke Base tidak menyambung apa
+    // pun — ini yang dijaga oleh forceTier.
+    const withSuggestions = result.bridges.withinTier.filter(
+      (p) => p.suggestions.length,
+    );
+    expect(withSuggestions.length).toBeGreaterThan(0);
+    for (const pair of withSuggestions) {
+      for (const s of pair.suggestions) expect(s.tier).toBe(pair.tier);
+    }
+  });
+
+  it("tidak menyarankan bahan yang sudah ada di formula", () => {
+    const used = new Set(ctx.version.lines.map((l) => l.refId));
+    for (const pair of result.bridges.withinTier) {
+      for (const s of pair.suggestions) expect(used.has(s.materialId)).toBe(false);
+    }
+  });
+});

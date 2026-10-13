@@ -95,7 +95,14 @@ export function suggestBridges(
   b: FacetVector,
   ctx: FormulaContext,
   excludeIds: Set<string>,
-  opts: { onlyStock?: boolean; limit?: number; pair?: [Tier, Tier] } = {},
+  opts: {
+    onlyStock?: boolean;
+    limit?: number;
+    /** pasangan tier yang dijembatani, untuk menentukan tier tujuan per bahan */
+    pair?: [Tier, Tier];
+    /** jembatan dalam tier: tujuannya selalu tier itu sendiri */
+    forceTier?: Tier;
+  } = {},
 ): BridgeSuggestion[] {
   const { onlyStock = false, limit = 5 } = opts;
   const ta = topFacets(a);
@@ -150,7 +157,9 @@ export function suggestBridges(
       starterDose: starterDose(material),
       // Tier tujuan ditentukan PER BAHAN, bukan per pasangan: aturannya
       // bergantung pada note_tier_hint bahan itu sendiri (PRD v2 §6 B.A).
-      tier: opts.pair ? recommendTier(material, opts.pair) : "mid",
+      tier:
+        opts.forceTier ??
+        (opts.pair ? recommendTier(material, opts.pair) : "mid"),
     });
   }
 
@@ -310,7 +319,12 @@ export function withinTierBridges(
           b: { lineId: lines[j].id, name: nameOf(lines[j].id) },
           sim: s,
           status,
-          suggestions: suggestBridges(va, vb, ctx, exclude, opts),
+          // Jembatan antara dua bahan di tier yang sama masuk ke tier itu
+          // juga — memindahkannya ke tier lain tidak menyambung apa pun.
+          suggestions: suggestBridges(va, vb, ctx, exclude, {
+            ...opts,
+            forceTier: tier,
+          }),
         });
       }
     }

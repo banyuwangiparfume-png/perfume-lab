@@ -12,6 +12,7 @@ import { Cell, Pie, PieChart, ResponsiveContainer } from "recharts";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { Analysis } from "@/lib/calc/analyze";
+import type { BridgeStatus, BridgeSuggestion } from "@/lib/calc/bridge";
 import { fmtGram, fmtIdr, fmtNum, fmtPct } from "@/lib/calc/format";
 import { RULES_FOOTER, RULES_HEALTHY, type Warning } from "@/lib/calc/rules";
 import type { FormulaContext, Tier } from "@/lib/calc/types";
@@ -500,72 +501,136 @@ function BridgeTab({
     gap: "Jurang",
   } as const;
 
+  const badge = (status: BridgeStatus, sim: number) => (
+    <span
+      className={cn(
+        "rounded px-1.5 py-0.5 text-[11px] font-semibold",
+        statusTone[status],
+      )}
+    >
+      {statusLabel[status]} {fmtPct(sim * 100)}
+    </span>
+  );
+
   return (
-    <div className="space-y-4">
-      {crossTier.map((pair) => (
-        <div
-          key={pair.pair.join("-")}
-          className="rounded-lg border border-[var(--border)] p-3"
-        >
-          <div className="flex items-center gap-2">
-            <span className="text-[13px] font-medium">
-              {TIER_META[pair.pair[0]].label} ↔ {TIER_META[pair.pair[1]].label}
-            </span>
-            <span
-              className={cn(
-                "rounded px-1.5 py-0.5 text-[11px] font-semibold",
-                statusTone[pair.status],
-              )}
+    <div className="space-y-5">
+      {/* ---------------------------- antar tier ---------------------------- */}
+      {crossTier.length > 0 && (
+        <section className="space-y-2.5">
+          <h4 className="text-[13px] font-semibold">Antar tier</h4>
+
+          {crossTier.map((pair) => (
+            <div
+              key={pair.pair.join("-")}
+              className="rounded-lg border border-[var(--border)] p-3"
             >
-              {statusLabel[pair.status]} {fmtPct(pair.sim * 100)}
-            </span>
+              <div className="flex items-center gap-2">
+                <span className="text-[13px] font-medium">
+                  {TIER_META[pair.pair[0]].label} ↔{" "}
+                  {TIER_META[pair.pair[1]].label}
+                </span>
+                {badge(pair.status, pair.sim)}
+              </div>
+
+              <SuggestionList suggestions={pair.suggestions} onAdd={onAdd} />
+            </div>
+          ))}
+        </section>
+      )}
+
+      {/* ---------------------------- dalam tier ---------------------------- */}
+      {withinTier.length > 0 && (
+        <section className="space-y-2.5">
+          <div>
+            <h4 className="text-[13px] font-semibold">Dalam tier</h4>
+            {/*
+              Transisi antar tier bisa mulus sementara isi satu tier sendiri
+              terdengar seperti dua hal yang ditaruh berdampingan. Yang
+              ditampilkan hanya pasangan yang TIDAK nyambung, diurut dari yang
+              paling renggang.
+            */}
+            <p className="text-[11px] leading-relaxed text-[var(--text-subtle)]">
+              Dua bahan di tier yang sama yang belum saling menyambung. Yang
+              paling renggang di atas.
+            </p>
           </div>
 
-          {pair.suggestions.length > 0 && (
-            <ul className="mt-2 space-y-1.5">
-              {pair.suggestions.map((s) => (
-                <li
-                  key={s.materialId}
-                  className="flex items-start gap-2 rounded border border-[var(--border)] px-2 py-1.5"
+          {withinTier.map((pair) => (
+            <div
+              key={`${pair.a.lineId}-${pair.b.lineId}`}
+              className="rounded-lg border border-[var(--border)] p-3"
+            >
+              <div className="flex flex-wrap items-center gap-2">
+                <span
+                  className="rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.04em]"
+                  style={{
+                    color: TIER_META[pair.tier].color,
+                    backgroundColor: TIER_META[pair.tier].soft,
+                  }}
                 >
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[13px] font-medium">
-                      {s.name}
-                      {s.inStock && (
-                        <span className="ml-1 text-[var(--warn)]">★</span>
-                      )}
-                      {s.ruleSource && (
-                        <span className="ml-1.5 rounded bg-[var(--surface-muted)] px-1 py-0.5 text-[10px] text-[var(--text-muted)]">
-                          {s.ruleSource}
-                        </span>
-                      )}
-                    </p>
-                    <p className="text-[11px] text-[var(--text-subtle)]">
-                      {s.reason}
-                    </p>
-                  </div>
-                  {onAdd && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => onAdd(s.materialId, s.tier, s.starterDose)}
-                    >
-                      + {TIER_META[s.tier].label}
-                    </Button>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      ))}
+                  {TIER_META[pair.tier].label}
+                </span>
+                <span className="text-[13px] font-medium">
+                  {pair.a.name} ↔ {pair.b.name}
+                </span>
+                {badge(pair.status, pair.sim)}
+              </div>
+
+              <SuggestionList suggestions={pair.suggestions} onAdd={onAdd} />
+            </div>
+          ))}
+        </section>
+      )}
 
       <p className="text-[11px] leading-relaxed text-[var(--text-subtle)]">
         Satu celah, satu bridger. Mulai dosis kecil, naikkan sampai sambungannya
         halus — bukan sampai bridger-nya kecium sendiri.
       </p>
     </div>
+  );
+}
+
+function SuggestionList({
+  suggestions,
+  onAdd,
+}: {
+  suggestions: BridgeSuggestion[];
+  onAdd?: (materialId: string, tier: Tier, dose: number) => void;
+}) {
+  if (!suggestions.length) return null;
+
+  return (
+    <ul className="mt-2 space-y-1.5">
+      {suggestions.map((s) => (
+        <li
+          key={s.materialId}
+          className="flex items-start gap-2 rounded border border-[var(--border)] px-2 py-1.5"
+        >
+          <div className="min-w-0 flex-1">
+            <p className="text-[13px] font-medium">
+              {s.name}
+              {s.inStock && <span className="ml-1 text-[var(--warn)]">★</span>}
+              {s.ruleSource && (
+                <span className="ml-1.5 rounded bg-[var(--surface-muted)] px-1 py-0.5 text-[10px] text-[var(--text-muted)]">
+                  {s.ruleSource}
+                </span>
+              )}
+            </p>
+            <p className="text-[11px] text-[var(--text-subtle)]">{s.reason}</p>
+          </div>
+          {onAdd && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => onAdd(s.materialId, s.tier, s.starterDose)}
+            >
+              + {TIER_META[s.tier].label}
+            </Button>
+          )}
+        </li>
+      ))}
+    </ul>
   );
 }
 
