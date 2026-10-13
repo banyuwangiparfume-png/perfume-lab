@@ -13,7 +13,6 @@ import {
   PageHeader,
   SmellDisclaimer,
 } from "@/components/shared/primitives";
-import { analyze } from "@/lib/legacy/calc/analyze";
 import { fmtGram, fmtPct } from "@/lib/calc/format";
 import { TRANSITION_VERDICTS } from "@/lib/constants";
 import {

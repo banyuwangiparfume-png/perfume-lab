@@ -26,7 +26,6 @@ import type { Warning } from "@/lib/calc/rules";
 import type {
   FormulaContext,
   Line,
-  Material,
   Tier,
   Version,
 } from "@/lib/calc/types";

@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { ClipboardList, Pencil } from "lucide-react";
 import { AnalysisPanel } from "@/components/analysis/AnalysisPanel";
 import { EvaluationCard } from "@/components/evaluation/EvaluationCard";
+import { CompositionTable } from "@/components/formula/CompositionTable";
 import { DiluteButton } from "@/components/formula/DiluteButton";
 import {
   Card,
@@ -12,12 +13,11 @@ import {
   PageHeader,
 } from "@/components/shared/primitives";
 import { Button } from "@/components/ui/button";
-import { fmtGram, fmtIdr, fmtNum, fmtPct } from "@/lib/calc/format";
+import { fmtGram, fmtIdr } from "@/lib/calc/format";
 import { listEvaluationsForVersion } from "@/lib/data/evaluations";
 import { accordUsage, getFormula, pickVersion } from "@/lib/data/formulas";
 import { getVersionDetail } from "@/lib/data/versions";
 import { labStage } from "@/lib/lab";
-import { TIER_META } from "@/lib/tiers";
 import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -148,119 +148,15 @@ export default async function FormulaDetailPage({
                 Komposisi
               </CardTitle>
 
-              <div className="-mx-5 overflow-x-auto md:mx-0">
-                <table className="w-full min-w-[620px] text-sm">
-                  <thead>
-                    <tr className="border-y border-[var(--border)] bg-[var(--surface-muted)] text-[11px] uppercase tracking-[0.04em] text-[var(--text-muted)]">
-                      <th className="px-3 py-2 text-left font-medium">Bahan</th>
-                      <th className="px-3 py-2 text-left font-medium">Tier</th>
-                      <th className="px-3 py-2 text-right font-medium">%</th>
-                      <th className="px-3 py-2 text-right font-medium">Gram</th>
-                      <th className="px-3 py-2 text-left font-medium">Dilusi</th>
-                      <th className="px-3 py-2 text-right font-medium">
-                        Kekuatan
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {context.version.lines.map((line) => {
-                      const m =
-                        line.kind === "raw_material"
-                          ? context.materials.get(line.refId)
-                          : null;
-                      const accord =
-                        line.kind === "accord"
-                          ? context.accords.get(line.refId)
-                          : null;
-                      const fo =
-                        line.kind === "fo" ? context.fos.get(line.refId) : null;
-                      const name =
-                        m?.name ?? accord?.name ?? fo?.name ?? "(tidak ditemukan)";
-                      const row = analysis.strength.rows.find(
-                        (r) => r.refId === line.refId,
-                      );
-                      const meta = TIER_META[line.tier];
+              <CompositionTable
+                table={analysis.lines}
+                batchG={context.version.batchG}
+                grouped={formula.pyramid_mode}
+              />
 
-                      return (
-                        <tr
-                          key={line.id}
-                          className="border-b border-[var(--border)]"
-                        >
-                          <td className="px-3 py-2">
-                            {name}
-                            {line.kind === "accord" && (
-                              <span className="ml-1.5 rounded bg-[var(--brand-soft)] px-1 py-0.5 text-[10px] font-semibold text-[var(--brand)]">
-                                ACCORD
-                              </span>
-                            )}
-                            {line.kind === "fo" && (
-                              <span className="ml-1.5 rounded bg-[#f0ece2] px-1 py-0.5 text-[10px] font-semibold text-[#8a6d2f]">
-                                FO
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-3 py-2">
-                            <span
-                              className="inline-flex items-center gap-1 text-[12px]"
-                              style={{ color: meta.color }}
-                            >
-                              <span
-                                aria-hidden
-                                className="size-2 rounded-full"
-                                style={{ backgroundColor: meta.color }}
-                              />
-                              {meta.label}
-                            </span>
-                          </td>
-                          <td className="numeric px-3 py-2 font-medium">
-                            {fmtPct(line.pct)}
-                          </td>
-                          <td className="numeric px-3 py-2 text-[var(--text-muted)]">
-                            {fmtGram((line.pct / 100) * context.version.batchG)}
-                          </td>
-                          <td className="px-3 py-2 text-[12px] text-[var(--text-muted)]">
-                            {line.userDilutionPct < 100
-                              ? `${fmtNum(line.userDilutionPct)}% in ${
-                                  context.materials.get(
-                                    line.userSolventId ?? "",
-                                  )?.name ?? "?"
-                                }`
-                              : "neat"}
-                            {m && m.supplierDilutionPct < 100 && (
-                              <span className="block text-[11px] text-[var(--text-subtle)]">
-                                bawaan {fmtNum(m.supplierDilutionPct)}%
-                              </span>
-                            )}
-                          </td>
-                          <td className="numeric px-3 py-2">
-                            {row?.strengthPct == null
-                              ? "—"
-                              : fmtPct(row.strengthPct)}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                  <tfoot>
-                    <tr className="bg-[var(--surface-muted)] font-semibold">
-                      <td className="px-3 py-2" colSpan={2}>
-                        Total
-                      </td>
-                      <td className="numeric px-3 py-2">
-                        {fmtPct(
-                          context.version.lines.reduce((a, l) => a + l.pct, 0),
-                        )}
-                      </td>
-                      <td className="numeric px-3 py-2">
-                        {fmtGram(context.version.batchG)}
-                      </td>
-                      <td colSpan={2} className="numeric px-3 py-2 text-right">
-                        {fmtIdr(analysis.cost.perGram)}/g
-                      </td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
+              <p className="pt-3 text-[13px] text-[var(--text-muted)]">
+                HPP {fmtIdr(analysis.cost.perGram)}/g
+              </p>
             </Card>
 
             {selected.change_note && (

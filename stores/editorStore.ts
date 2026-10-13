@@ -112,7 +112,7 @@ function changedIds(before: Line[], after: Line[]): string[] {
     .map((l) => l.id);
 }
 
-export const useEditorStore = create<EditorState>((set, get) => {
+export const useEditorStore = create<EditorState>((set) => {
   /** Satu pintu untuk tiap perubahan: catat undo, tandai dirty, sorot yang berubah. */
   const commit = (
     producer: (state: EditorState) => Partial<EditorSnapshot>,

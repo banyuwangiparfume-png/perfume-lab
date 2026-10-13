@@ -7,6 +7,7 @@ import {
 } from "./bridge";
 import { costBreakdown, type CostBreakdown } from "./cost";
 import { expand, ExpandError, mergeByMaterial, type MergedItem } from "./expand";
+import { lineTable, type LineTable } from "./lines";
 import { runRules, type Warning } from "./rules";
 import { solventReport, type SolventReport } from "./solvents";
 import {
@@ -20,6 +21,8 @@ import type { ExpandedItem, FormulaContext, Tier } from "./types";
 export type Analysis = {
   items: ExpandedItem[];
   merged: Map<string, MergedItem>;
+  /** komposisi per baris yang diketik user — untuk dibaca, bukan dihitung ulang */
+  lines: LineTable;
   strength: StrengthResult;
   realPyramid: RealPyramidRow[];
   aroma: Record<Tier, AromaPie>;
@@ -75,6 +78,7 @@ export function analyze(
   }
 
   const strength = strengthTable(ctx, items);
+  const lines = lineTable(ctx, items);
   const pyramid = realPyramid(ctx, items);
   const solvents = solventReport(ctx, items);
   const cost = costBreakdown(ctx, items);
@@ -114,6 +118,7 @@ export function analyze(
   return {
     items,
     merged: mergeByMaterial(items),
+    lines,
     strength,
     realPyramid: pyramid,
     aroma,
