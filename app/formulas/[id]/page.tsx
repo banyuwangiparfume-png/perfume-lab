@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ClipboardList, Pencil } from "lucide-react";
+import { ClipboardList, Pencil, Scale } from "lucide-react";
 import { AnalysisPanel } from "@/components/analysis/AnalysisPanel";
 import { EvaluationCard } from "@/components/evaluation/EvaluationCard";
 import { CompositionTable } from "@/components/formula/CompositionTable";
@@ -69,6 +69,12 @@ export default async function FormulaDetailPage({
           </>
         }
       >
+        <Button asChild variant="outline">
+          <Link href={`/formulas/${id}/weigh?v=${selected.id}`}>
+            <Scale className="size-4" />
+            Lembar timbang
+          </Link>
+        </Button>
         <Button asChild>
           <Link href={`/formulas/${id}/edit`}>
             <Pencil className="size-4" />

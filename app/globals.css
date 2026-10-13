@@ -216,3 +216,46 @@
     text-align: right;
   }
 }
+
+/*
+  Cetak.
+
+  Lembar timbang dibawa ke meja kerja, sering di samping timbangan dan jauh
+  dari layar. Yang dicetak harus cuma tabelnya: navbar, tombol, dan warna
+  latar cuma menghabiskan tinta dan membuat angkanya lebih sulit dibaca.
+*/
+@media print {
+  header,
+  footer,
+  [data-sonner-toaster] {
+    display: none !important;
+  }
+
+  main {
+    max-width: none !important;
+    padding: 0 !important;
+  }
+
+  /* Hitam putih: warna tier dan badge tetap terbaca sebagai teks. */
+  * {
+    background: transparent !important;
+    color: #000 !important;
+    box-shadow: none !important;
+  }
+
+  /* Garis tabel tetap perlu — tanpa itu barisnya menyatu di kertas. */
+  table,
+  th,
+  td {
+    border-color: #999 !important;
+  }
+
+  /* Satu baris bahan tidak boleh terpotong antar halaman. */
+  tr {
+    break-inside: avoid;
+  }
+
+  thead {
+    display: table-header-group;
+  }
+}
