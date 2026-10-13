@@ -6,6 +6,7 @@ import { mergeSettings } from "../settings";
 import { getDb } from "../supabase/db";
 import type { FacetRow } from "../supabase/database.types";
 import { loadFormulaContext } from "./loadFormulaContext";
+import { fetchAllPages } from "./paginate";
 import { listAccordsForPicker, type AccordOption } from "./versions";
 
 export type EditorData = {
@@ -33,28 +34,6 @@ const num = (v: unknown, fallback = 0) => {
  * harus menimbang setiap kandidat terhadap formula yang sedang dibuka. Memuat
  * ulang per ketikan justru akan membuat panel analisa tersendat.
  */
-/** Satu halaman PostgREST. Lebih kecil dari batas bawaan supaya aman. */
-const PAGE = 1000;
-
-/**
- * Mengambil seluruh baris, berapa pun jumlahnya.
- *
- * PostgREST memotong jawaban di batas barisnya tanpa error dan tanpa tanda.
- * Kueri yang hari ini muat belum tentu muat bulan depan, dan gejalanya bukan
- * halaman gagal — melainkan angka yang diam-diam salah.
- */
-async function fetchAllPages<T>(
-  query: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
-): Promise<T[]> {
-  const out: T[] = [];
-  for (let from = 0; ; from += PAGE) {
-    const { data, error } = await query(from, from + PAGE - 1);
-    if (error) throw new Error(`Gagal memuat data: ${error.message}`);
-    out.push(...(data ?? []));
-    if (!data || data.length < PAGE) break;
-  }
-  return out;
-}
 export async function loadEditorData(formulaId: string): Promise<EditorData> {
   const db = getDb();
   const ownerId = await getOwnerId();

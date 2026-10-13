@@ -4,6 +4,7 @@ import { pickPrice, type PriceTier } from "../legacy/calc/pricing";
 import { PRICING } from "../constants";
 import { getOwnerId } from "../owner";
 import { getDb } from "../supabase/db";
+import { fetchAllPages } from "./paginate";
 import type {
   FunctionCategoryEnum,
   RawMaterialRow,
@@ -62,32 +63,36 @@ export async function listMaterials(
   const db = getDb();
   const ownerId = await getOwnerId();
 
-  let q = db
-    .from("raw_materials")
-    .select(`*, prices:rm_prices(${PRICE_SELECT})`)
-    .or(`owner_id.is.null,owner_id.eq.${ownerId}`)
-    .order("name");
+  // Kuerinya dibangun ulang tiap halaman: builder PostgREST sekali pakai, dan
+  // master bahan sudah 523 baris — batas 1.000 akan terlewati diam-diam begitu
+  // pricelist berikutnya masuk.
+  const build = (from: number, to: number) => {
+    let q = db
+      .from("raw_materials")
+      .select(`*, prices:rm_prices(${PRICE_SELECT})`)
+      .or(`owner_id.is.null,owner_id.eq.${ownerId}`)
+      .order("name")
+      .range(from, to);
 
-  if (!filter.includeInactive) q = q.eq("is_active", true);
-  if (filter.family) q = q.eq("family", filter.family);
-  if (filter.functionCategory)
-    q = q.eq("function_category", filter.functionCategory);
+    if (!filter.includeInactive) q = q.eq("is_active", true);
+    if (filter.family) q = q.eq("family", filter.family);
+    if (filter.functionCategory)
+      q = q.eq("function_category", filter.functionCategory);
 
-  if (filter.search) {
-    const s = filter.search.replace(/[%,()]/g, " ").trim();
-    if (s) {
-      q = q.or(
-        `name.ilike.%${s}%,synonym.ilike.%${s}%,cas_number.ilike.%${s}%`,
-      );
+    if (filter.search) {
+      const s = filter.search.replace(/[%,()]/g, " ").trim();
+      if (s) {
+        q = q.or(
+          `name.ilike.%${s}%,synonym.ilike.%${s}%,cas_number.ilike.%${s}%`,
+        );
+      }
     }
-  }
+    return q;
+  };
 
-  const { data, error } = await q;
-  if (error) throw new Error(`Gagal memuat master bahan: ${error.message}`);
+  const data = await fetchAllPages(build, "master bahan");
 
-  let rows = (data ?? []).map((m) =>
-    decorate(m as unknown as MaterialWithPrices),
-  );
+  let rows = data.map((m) => decorate(m as unknown as MaterialWithPrices));
 
   // Filter "punya data impact" dilakukan di aplikasi karena nilainya turunan
   // dari dua kolom (override lebih dulu, baru nilai supplier).
@@ -154,14 +159,20 @@ export async function listBridgerCandidates(): Promise<MaterialListItem[]> {
 export async function materialStats() {
   const db = getDb();
   const ownerId = await getOwnerId();
-  const { data, error } = await db
-    .from("raw_materials")
-    .select("odor_impact, odor_impact_override")
-    .or(`owner_id.is.null,owner_id.eq.${ownerId}`)
-    .eq("is_active", true);
-
-  if (error) throw new Error(`Gagal menghitung bahan: ${error.message}`);
-  const rows = data ?? [];
+  const rows = await fetchAllPages<{
+    odor_impact: number | null;
+    odor_impact_override: number | null;
+  }>(
+    (from, to) =>
+      db
+        .from("raw_materials")
+        .select("odor_impact, odor_impact_override")
+        .or(`owner_id.is.null,owner_id.eq.${ownerId}`)
+        .eq("is_active", true)
+        .order("id")
+        .range(from, to),
+    "statistik bahan",
+  );
   return {
     total: rows.length,
     withoutImpact: rows.filter((r) => effectiveImpact(r) == null).length,
@@ -173,14 +184,18 @@ export async function materialStats() {
 export async function listFamilies(): Promise<string[]> {
   const db = getDb();
   const ownerId = await getOwnerId();
-  const { data, error } = await db
-    .from("raw_materials")
-    .select("family")
-    .or(`owner_id.is.null,owner_id.eq.${ownerId}`)
-    .not("family", "is", null);
-
-  if (error) throw new Error(`Gagal memuat family: ${error.message}`);
-  return [...new Set((data ?? []).map((r) => r.family as string))].sort();
+  const rows = await fetchAllPages<{ family: string | null }>(
+    (from, to) =>
+      db
+        .from("raw_materials")
+        .select("family")
+        .or(`owner_id.is.null,owner_id.eq.${ownerId}`)
+        .not("family", "is", null)
+        .order("family")
+        .range(from, to),
+    "family",
+  );
+  return [...new Set(rows.map((r) => r.family as string))].sort();
 }
 
 /** Formula mana saja yang memakai bahan ini — untuk melihat kebiasaan sendiri. */
