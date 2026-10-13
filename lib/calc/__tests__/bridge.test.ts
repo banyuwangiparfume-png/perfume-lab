@@ -9,7 +9,8 @@ import {
   topFacets,
 } from "../bridge";
 import type { FormulaContext, Material } from "../types";
-import { allMaterials, bridgeRules, materialNamed } from "./fixture";
+import { analyze } from "../analyze";
+import { allMaterials, bridgeRules, fixtureContext, materialNamed } from "./fixture";
 
 const ctx: FormulaContext = {
   version: {
@@ -136,5 +137,51 @@ describe("dosis awal & tier tujuan", () => {
       "base",
     );
     expect(recommendTier(undefined, ["mid", "base"])).toBe("base");
+  });
+});
+
+describe("saran bridger membawa tier tujuannya sendiri", () => {
+  const ctx = fixtureContext();
+  const result = analyze(ctx);
+
+  it("tiap saran punya tier, bukan satu tier untuk seluruh pasangan", () => {
+    const pairs = result.bridges.crossTier.filter((p) => p.suggestions.length);
+    expect(pairs.length).toBeGreaterThan(0);
+    for (const pair of pairs) {
+      for (const s of pair.suggestions) {
+        expect(["top", "mid", "base"]).toContain(s.tier);
+      }
+    }
+  });
+
+  it("Mid↔Base: bahan ber-hint mid masuk Mid, sisanya Base", () => {
+    // Ini aturan PRD v2 §6 B.A, dan inti dari laporan user: bridger yang
+    // ditambahkan harus mendarat di tier yang sesuai catatannya sendiri —
+    // bukan di tier yang sama untuk semua saran.
+    const pair = result.bridges.crossTier.find(
+      (p) => p.pair[0] === "mid" && p.pair[1] === "base",
+    );
+    expect(pair).toBeDefined();
+
+    for (const s of pair!.suggestions) {
+      const hint = ctx.materials.get(s.materialId)?.noteTierHint;
+      expect(s.tier).toBe(hint === "mid" ? "mid" : "base");
+    }
+  });
+
+  it("Top↔Mid selalu ke Mid, apa pun hint bahannya", () => {
+    const pair = result.bridges.crossTier.find(
+      (p) => p.pair[0] === "top" && p.pair[1] === "mid",
+    );
+    expect(pair).toBeDefined();
+    for (const s of pair!.suggestions) expect(s.tier).toBe("mid");
+  });
+
+  it("Top↔Base jatuh ke Mid — jembatan antara ujung duduk di tengah", () => {
+    const pair = result.bridges.crossTier.find(
+      (p) => p.pair[0] === "top" && p.pair[1] === "base",
+    );
+    expect(pair).toBeDefined();
+    for (const s of pair!.suggestions) expect(s.tier).toBe("mid");
   });
 });

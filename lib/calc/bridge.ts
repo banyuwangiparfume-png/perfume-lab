@@ -56,6 +56,8 @@ export type BridgeSuggestion = {
   inStock: boolean;
   /** dosis awal yang disarankan, % dari formula */
   starterDose: number;
+  /** tier tujuan kalau saran ini ditambahkan */
+  tier: Tier;
 };
 
 /** Dosis awal: bahan kuat dimulai setengahnya, supaya tidak kedengaran sendiri. */
@@ -93,7 +95,7 @@ export function suggestBridges(
   b: FacetVector,
   ctx: FormulaContext,
   excludeIds: Set<string>,
-  opts: { onlyStock?: boolean; limit?: number } = {},
+  opts: { onlyStock?: boolean; limit?: number; pair?: [Tier, Tier] } = {},
 ): BridgeSuggestion[] {
   const { onlyStock = false, limit = 5 } = opts;
   const ta = topFacets(a);
@@ -146,6 +148,9 @@ export function suggestBridges(
       impact: material.impact,
       inStock: ctx.stock.has(material.id),
       starterDose: starterDose(material),
+      // Tier tujuan ditentukan PER BAHAN, bukan per pasangan: aturannya
+      // bergantung pada note_tier_hint bahan itu sendiri (PRD v2 §6 B.A).
+      tier: opts.pair ? recommendTier(material, opts.pair) : "mid",
     });
   }
 
@@ -158,8 +163,6 @@ export type TierBridge = {
   sim: number;
   status: BridgeStatus;
   suggestions: BridgeSuggestion[];
-  /** tier tujuan default kalau user menekan "+ Tambah" */
-  defaultTier: Tier;
 };
 
 /** Semua bahan yang sudah ada di formula — tidak disarankan ulang. */
@@ -217,8 +220,10 @@ export function crossTierBridges(
       suggestions:
         status === "connected"
           ? []
-          : suggestBridges(vectors[x], vectors[y], ctx, exclude, opts),
-      defaultTier: x === "top" && y === "mid" ? "mid" : "base",
+          : suggestBridges(vectors[x], vectors[y], ctx, exclude, {
+              ...opts,
+              pair: [x, y],
+            }),
     };
   });
 }

@@ -549,11 +549,9 @@ function BridgeTab({
                       type="button"
                       variant="outline"
                       size="sm"
-                      onClick={() =>
-                        onAdd(s.materialId, pair.defaultTier, s.starterDose)
-                      }
+                      onClick={() => onAdd(s.materialId, s.tier, s.starterDose)}
                     >
-                      + {TIER_META[pair.defaultTier].label}
+                      + {TIER_META[s.tier].label}
                     </Button>
                   )}
                 </li>
