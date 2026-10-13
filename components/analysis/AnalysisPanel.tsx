@@ -673,7 +673,7 @@ export function AnalysisPanel({
           menimpa isi panel. Tingginya dibuat mengikuti isi, dan tiap tab
           berhenti saling merebut lebar supaya pembungkusnya rapi.
         */}
-        <TabsList className="h-auto w-full flex-wrap justify-start gap-0.5 [&>button]:h-7 [&>button]:flex-none [&>button]:px-2">
+        <TabsList className="h-auto! w-full flex-wrap justify-start gap-0.5 [&>button]:h-7! [&>button]:flex-none [&>button]:px-2">
           <TabsTrigger value="ringkasan">
             Ringkasan
             {alerts > 0 && (
