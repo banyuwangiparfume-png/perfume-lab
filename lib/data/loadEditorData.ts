@@ -8,6 +8,24 @@ import type { FacetRow } from "../supabase/database.types";
 import { loadFormulaContext } from "./loadFormulaContext";
 import { fetchAllPages } from "./paginate";
 import { listAccordsForPicker, type AccordOption } from "./versions";
+import { suggestFunctionCategory, type FunctionSource } from "../calc/functions";
+
+/**
+ * Kategori fungsi efektif beserta asalnya.
+ *
+ * Urutannya: koreksi user, lalu data supplier, lalu tebakan dari family.
+ * Tebakan selalu kalah, dan selalu bisa dibedakan.
+ */
+function resolveFunction(
+  override: string | null,
+  supplier: string | null,
+  family: string | null,
+): { value: string | null; source: FunctionSource } {
+  if (override) return { value: override, source: "user" };
+  if (supplier) return { value: supplier, source: "supplier" };
+  return { value: suggestFunctionCategory(family), source: "derived" };
+}
+
 
 /**
  * "all" dipakai formula tanpa piramida, bukan sebagai kebiasaan satu bahan —
@@ -153,7 +171,16 @@ export async function loadEditorData(formulaId: string): Promise<EditorData> {
       (m.facets ?? []).map((f) => [f.facet_key, num(f.weight)]),
     ),
     // Koreksi user menang atas data supplier, sama seperti odor_impact.
-    functionCategory: m.function_category_override ?? m.function_category,
+    functionCategory: resolveFunction(
+      m.function_category_override,
+      m.function_category,
+      m.family,
+    ).value,
+    functionSource: resolveFunction(
+      m.function_category_override,
+      m.function_category,
+      m.family,
+    ).source,
     noteTierHint: tierOrNull(
       m.note_tier_hint_override ?? m.note_tier_hint,
     ),

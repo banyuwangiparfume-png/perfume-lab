@@ -1,3 +1,4 @@
+import type { FunctionSource } from "./functions";
 /**
  * Tipe inti lapisan kalkulasi v2.
  *
@@ -33,6 +34,12 @@ export type Material = {
   supplierSolventId: string | null;
   facets: FacetVector;
   functionCategory: string | null;
+  /**
+   * Dari mana nilai di atas berasal. "derived" berarti ditebak dari family
+   * karena supplier mengosongkannya — dan tebakan tidak boleh dihitung sebagai
+   * data saat menilai kelengkapan.
+   */
+  functionSource: FunctionSource;
   noteTierHint: Tier | null;
   isBridgeCandidate: boolean;
   /**

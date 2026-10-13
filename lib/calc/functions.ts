@@ -49,8 +49,14 @@ export type FunctionRow = {
 
 export type FunctionMix = {
   rows: FunctionRow[];
-  /** % bahan pewangi yang kategori fungsinya sudah terisi */
+  /**
+   * % bahan pewangi yang kategorinya datang dari DATA — supplier atau koreksi
+   * user. Tebakan tidak dihitung: menilai kelengkapan dengan tebakan sendiri
+   * membuat angkanya selalu terlihat lengkap.
+   */
   coverage: number;
+  /** % bahan pewangi yang kategorinya masih tebakan dari family */
+  derivedPct: number;
   /** jumlah bahan pewangi (non-pelarut, non-FO) yang ikut dihitung */
   materialCount: number;
   /**
@@ -74,6 +80,8 @@ export function functionMix(strength: StrengthResult): FunctionMix {
 
   let solventPct = 0;
   let foPct = 0;
+  let derived = 0;
+  let known = 0;
   let denominator = 0;
   let materialCount = 0;
 
@@ -93,6 +101,13 @@ export function functionMix(strength: StrengthResult): FunctionMix {
     materialCount++;
 
     const key = (row.functionCategory ?? "").toLowerCase() || UNKNOWN_KEY;
+    if (key === UNKNOWN_KEY) {
+      // tidak dihitung ke mana-mana
+    } else if (row.functionSource === "derived") {
+      derived += row.productPct;
+    } else {
+      known += row.productPct;
+    }
     const bucket = buckets.get(key) ?? { pct: 0, strengthPct: 0, materials: [] };
     bucket.pct += row.productPct;
     bucket.strengthPct += row.strengthPct ?? 0;
@@ -116,11 +131,10 @@ export function functionMix(strength: StrengthResult): FunctionMix {
     return b.pct - a.pct;
   });
 
-  const unknown = rows.find((r) => r.key === UNKNOWN_KEY)?.pct ?? 0;
-
   return {
     rows,
-    coverage: denominator ? 100 - unknown : 0,
+    coverage: denominator ? (known / denominator) * 100 : 0,
+    derivedPct: denominator ? (derived / denominator) * 100 : 0,
     materialCount,
     excluded: { solventPct, foPct },
   };
@@ -129,3 +143,46 @@ export function functionMix(strength: StrengthResult): FunctionMix {
 /** Porsi satu peran, 0 kalau perannya belum ada sama sekali. */
 export const shareOf = (mix: FunctionMix, key: string): number =>
   mix.rows.find((r) => r.key === key)?.pct ?? 0;
+
+/**
+ * Tebakan kategori fungsi untuk bahan yang supplier-nya mengosongkannya.
+ *
+ * Di pricelist 2026 ada 206 bahan tanpa kategori — dan semuanya juga tanpa
+ * nilai impact. Satu-satunya sinyal yang tersisa adalah family, jadi ini
+ * TEBAKAN, bukan data. Karena itu hasilnya tidak pernah ditulis ke database:
+ * dia dihitung saat dibaca, selalu kalah dari data supplier dan dari koreksi
+ * user, dan ditandai terpisah di panel supaya tidak menyamar jadi fakta.
+ *
+ * Pemetaannya memakai satu gagasan saja: family menunjukkan kelas keatsirian,
+ * dan kelas keatsirian menunjukkan peran yang paling mungkin.
+ *
+ *   yang bertahan (woody, balsamic, musk)  -> menahan     -> fixative
+ *   yang menguap duluan (citrus, green)    -> mengangkat  -> diffuser
+ *   yang di tengah (floral, fruity, …)     -> memberi watak -> modifier
+ *
+ * Family yang tidak ada di sini sengaja tidak ditebak. Lebih baik satu bahan
+ * tampil "belum berkategori" daripada diberi peran yang salah diam-diam.
+ */
+const FAMILY_TO_FUNCTION: Record<string, string> = {
+  "musk / animalic": "fixative",
+  "sweet/balsamic": "fixative",
+  woody: "fixative",
+  citrus: "diffuser",
+  green: "diffuser",
+  floral: "modifier",
+  fruity: "modifier",
+  herbal: "modifier",
+  mineral: "modifier",
+  spicy: "modifier",
+  gourmand: "modifier",
+};
+
+export function suggestFunctionCategory(
+  family: string | null | undefined,
+): string | null {
+  if (!family) return null;
+  return FAMILY_TO_FUNCTION[family.trim().toLowerCase()] ?? null;
+}
+
+/** Dari mana nilai kategori fungsi sebuah bahan berasal. */
+export type FunctionSource = "user" | "supplier" | "derived";

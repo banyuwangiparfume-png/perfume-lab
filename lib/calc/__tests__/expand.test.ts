@@ -24,6 +24,7 @@ const material = (
   supplierSolventId: null,
   facets: { woody: 1 },
   functionCategory: null,
+  functionSource: "supplier" as const,
   noteTierHint: null,
   isBridgeCandidate: false,
   isSolvent: false,

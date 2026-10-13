@@ -25,6 +25,7 @@ type TabKey =
   | "aroma"
   | "kekuatan"
   | "fungsi"
+  | "diffuser"
   | "pelarut"
   | "hpp"
   | "bridger";
@@ -681,6 +682,7 @@ export function AnalysisPanel({
           <TabsTrigger value="pelarut">Pelarut</TabsTrigger>
           <TabsTrigger value="hpp">HPP</TabsTrigger>
           <TabsTrigger value="bridger">Bridger</TabsTrigger>
+          <TabsTrigger value="diffuser">Diffuser</TabsTrigger>
         </TabsList>
       </Tabs>
 
@@ -716,6 +718,9 @@ export function AnalysisPanel({
       )}
       {tab === "bridger" && (
         <BridgeTab analysis={analysis} onAdd={onAddBridge} />
+      )}
+      {tab === "diffuser" && (
+        <DiffuserTab analysis={analysis} onAdd={onAddBridge} />
       )}
 
       <p className="border-t border-[var(--border)] pt-2 text-[11px] leading-relaxed text-[var(--text-subtle)]">
@@ -814,13 +819,101 @@ function FunctionTab({ analysis }: { analysis: Analysis }) {
         {mix.excluded.foPct > 0 && (
           <> FO {fmtPct(mix.excluded.foPct)} tidak ikut — isinya tidak diketahui.</>
         )}
-        {mix.coverage < 100 && (
+        {mix.derivedPct > 0.05 && (
           <>
             {" "}
-            {fmtPct(100 - mix.coverage)} bahan belum punya kategori fungsi, jadi
-            angka di atas belum utuh.
+            {fmtPct(mix.derivedPct)} dari angka di atas masih TEBAKAN dari family
+            bahannya, bukan data supplier. Koreksi di halaman bahan kalau tidak
+            cocok.
           </>
         )}
+        {mix.coverage + mix.derivedPct < 99.95 && (
+          <>
+            {" "}
+            {fmtPct(100 - mix.coverage - mix.derivedPct)} bahan tidak bisa
+            ditebak kategorinya sama sekali.
+          </>
+        )}
+      </p>
+    </div>
+  );
+}
+
+/**
+ * Penguat proyeksi.
+ *
+ * Panelnya sengaja dipisah dari Bridger walau tampilannya mirip, karena
+ * pertanyaannya berbeda. Bridger mencari bahan yang duduk di ANTARA dua sisi
+ * yang tidak nyambung. Diffuser mencari yang searah dengan formula secara
+ * keseluruhan — tugasnya membawa yang sudah ada keluar lebih jauh, bukan
+ * menambah watak baru. Menggabungkan keduanya dalam satu daftar membuat dua
+ * nasihat yang beda tujuan terlihat setara.
+ */
+function DiffuserTab({
+  analysis,
+  onAdd,
+}: {
+  analysis: Analysis;
+  onAdd?: (materialId: string, tier: Tier, dose: number) => void;
+}) {
+  const { sharePct, present, suggestions } = analysis.diffusers;
+
+  return (
+    <div className="space-y-3">
+      <div className="rounded-lg border border-[var(--border)] p-3">
+        <div className="flex items-baseline gap-2">
+          <span className="text-[13px] font-medium">Porsi diffuser</span>
+          <span className="numeric ml-auto text-[15px] font-semibold">
+            {fmtPct(sharePct)}
+          </span>
+        </div>
+        <p className="mt-1 text-[12px] leading-relaxed text-[var(--text-subtle)]">
+          {present.length
+            ? `Dari ${present.join(" · ")}.`
+            : "Belum ada bahan berperan diffuser. Formulanya bisa terdengar dekat di kulit walau bahannya kuat."}
+        </p>
+      </div>
+
+      {suggestions.length > 0 ? (
+        <ul className="space-y-1.5">
+          {suggestions.map((s) => (
+            <li
+              key={s.materialId}
+              className="flex items-start gap-2 rounded border border-[var(--border)] px-2 py-1.5"
+            >
+              <div className="min-w-0 flex-1">
+                <p className="text-[13px] font-medium">
+                  {s.name}
+                  {s.inStock && <span className="ml-1 text-[var(--warn)]">★</span>}
+                </p>
+                <p className="text-[11px] text-[var(--text-subtle)]">
+                  {s.reason}
+                </p>
+              </div>
+              {onAdd && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onAdd(s.materialId, s.tier, s.starterDose)}
+                >
+                  + {TIER_META[s.tier].label}
+                </Button>
+              )}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-[13px] text-[var(--text-muted)]">
+          Belum ada saran. Isi dulu formulanya dengan bahan yang punya data
+          facet — saran diffuser dicari dari arah aroma yang sudah terbentuk.
+        </p>
+      )}
+
+      <p className="text-[11px] leading-relaxed text-[var(--text-subtle)]">
+        Yang disarankan cuma bahan yang kategorinya benar-benar data supplier,
+        bukan tebakan. Diffuser menaikkan jangkauan, bukan ketahanan — yang
+        menahan drydown ada di Fixative.
       </p>
     </div>
   );

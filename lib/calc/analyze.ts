@@ -7,7 +7,8 @@ import {
 } from "./bridge";
 import { costBreakdown, type CostBreakdown } from "./cost";
 import { expand, ExpandError, mergeByMaterial, type MergedItem } from "./expand";
-import { functionMix, type FunctionMix } from "./functions";
+import { diffuserReport, type DiffuserReport } from "./diffuser";
+import { functionMix, shareOf, type FunctionMix } from "./functions";
 import { lineTable, type LineTable } from "./lines";
 import { runRules, type Warning } from "./rules";
 import { solventReport, type SolventReport } from "./solvents";
@@ -27,6 +28,8 @@ export type Analysis = {
   strength: StrengthResult;
   /** komposisi peran bahan: diffuser / modifier / bridger / fixative */
   functions: FunctionMix;
+  /** saran penguat proyeksi, berdasar arah aroma formula keseluruhan */
+  diffusers: DiffuserReport;
   realPyramid: RealPyramidRow[];
   aroma: Record<Tier, AromaPie>;
   solvents: SolventReport;
@@ -122,12 +125,23 @@ export function analyze(
           }),
         };
 
+  // Porsi diffuser murah dihitung dan selalu berguna; yang mahal cuma
+  // pencarian sarannya, jadi hanya itu yang ikut dimatikan saat mengetik.
+  const diffusers =
+    opts.skipBridges || expandError
+      ? { sharePct: shareOf(functions, "diffuser"), present: [], suggestions: [] }
+      : diffuserReport(ctx, items, functions, {
+          onlyStock: opts.onlyStockBridges,
+          totalScore: strength.totalScore,
+        });
+
   return {
     items,
     merged: mergeByMaterial(items),
     lines,
     strength,
     functions,
+    diffusers,
     realPyramid: pyramid,
     aroma,
     solvents,

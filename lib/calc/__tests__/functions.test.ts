@@ -100,3 +100,32 @@ describe("R13 — peran fixative", () => {
     expect(r13(tiny)).toHaveLength(0);
   });
 });
+
+describe("tebakan kategori tidak dihitung sebagai data", () => {
+  it("coverage hanya menghitung yang datang dari supplier atau koreksi user", () => {
+    // Kalau tebakan ikut dihitung, angka kelengkapan selalu terlihat penuh —
+    // dan R13 akan menilai formula berdasarkan tebakannya sendiri.
+    const guessed = fixtureContext();
+    for (const m of guessed.materials.values()) {
+      m.functionCategory = "modifier";
+      m.functionSource = "derived";
+    }
+    const mixed = analyze(guessed).functions;
+
+    expect(mixed.coverage).toBeCloseTo(0, 6);
+    expect(mixed.derivedPct).toBeCloseTo(100, 6);
+    // dan porsi perannya tetap terhitung penuh
+    expect(mixed.rows.reduce((a, r) => a + r.pct, 0)).toBeCloseTo(100, 6);
+  });
+
+  it("R13 melaporkan data kurang saat semuanya cuma tebakan", () => {
+    const guessed = fixtureContext();
+    for (const m of guessed.materials.values()) {
+      m.functionCategory = "modifier";
+      m.functionSource = "derived";
+    }
+    const w = analyze(guessed).warnings.filter((x) => x.code === "R13");
+    expect(w).toHaveLength(1);
+    expect(w[0].message).toContain("kategori fungsi");
+  });
+});

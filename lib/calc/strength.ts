@@ -1,4 +1,5 @@
 import { mergeByMaterial } from "./expand";
+import type { FunctionSource } from "./functions";
 import {
   TIERS,
   sum,
@@ -44,6 +45,8 @@ export type StrengthRow = {
   strengthPct: number | null;
   impactMissing: boolean;
   functionCategory: string | null;
+  /** "derived" = ditebak dari family, bukan data supplier */
+  functionSource: FunctionSource;
   isSolvent: boolean;
   /** porsi yang datang dari DALAM accord — bukan dari dilusi pelarut */
   viaAccordPct: number;
@@ -114,6 +117,7 @@ export function strengthTable(
         m.kind === "fo" ? null : totalStrength ? (s / totalStrength) * 100 : 0,
       impactMissing: isMissing,
       functionCategory: material?.functionCategory ?? null,
+      functionSource: material?.functionSource ?? "supplier",
       isSolvent: material?.isSolvent ?? false,
       viaAccordPct: sum(
         m.sources.filter((it) => it.via.length > 0).map((it) => it.productPct),

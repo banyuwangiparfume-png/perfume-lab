@@ -130,6 +130,7 @@ export function allMaterials(): Map<string, Material> {
       supplierSolventId: null,
       facets: m.facets ?? {},
       functionCategory: m.fungsi,
+      functionSource: "supplier",
       noteTierHint: null,
       isBridgeCandidate: m.candidate,
       isSolvent: isSolventMaterial(m.name, m.kat),

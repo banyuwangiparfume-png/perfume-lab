@@ -14,6 +14,24 @@ import { getOwnerId } from "../owner";
 import { mergeSettings } from "../settings";
 import { getDb } from "../supabase/db";
 import type { FormulaRow, FormulaVersionRow } from "../supabase/database.types";
+import { suggestFunctionCategory, type FunctionSource } from "../calc/functions";
+
+/**
+ * Kategori fungsi efektif beserta asalnya.
+ *
+ * Urutannya: koreksi user, lalu data supplier, lalu tebakan dari family.
+ * Tebakan selalu kalah, dan selalu bisa dibedakan.
+ */
+function resolveFunction(
+  override: string | null,
+  supplier: string | null,
+  family: string | null,
+): { value: string | null; source: FunctionSource } {
+  if (override) return { value: override, source: "user" };
+  if (supplier) return { value: supplier, source: "supplier" };
+  return { value: suggestFunctionCategory(family), source: "derived" };
+}
+
 
 /**
  * "all" dipakai formula tanpa piramida, bukan sebagai kebiasaan satu bahan —
@@ -127,6 +145,7 @@ type MaterialRowWithRelations = {
   impact_basis: "as_sold" | "active";
   supplier_dilution_pct: number;
   supplier_solvent_id: string | null;
+  family: string | null;
   function_category: string | null;
   function_category_override: string | null;
   note_tier_hint: Tier | null;
@@ -158,7 +177,16 @@ function toMaterial(
       (row.facets ?? []).map((f) => [f.facet_key, num(f.weight)]),
     ),
     // Koreksi user menang atas data supplier, sama seperti odor_impact.
-    functionCategory: row.function_category_override ?? row.function_category,
+    functionCategory: resolveFunction(
+      row.function_category_override,
+      row.function_category,
+      row.family,
+    ).value,
+    functionSource: resolveFunction(
+      row.function_category_override,
+      row.function_category,
+      row.family,
+    ).source,
     noteTierHint: tierOrNull(
       row.note_tier_hint_override ?? row.note_tier_hint,
     ),
@@ -169,7 +197,7 @@ function toMaterial(
 }
 
 const MATERIAL_SELECT =
-  "id, name, category, odor_impact, odor_impact_override, impact_basis, supplier_dilution_pct, supplier_solvent_id, function_category, function_category_override, note_tier_hint, note_tier_hint_override, is_bridge_candidate, is_solvent, facets:raw_material_facets(facet_key, weight)";
+  "id, name, category, family, odor_impact, odor_impact_override, impact_basis, supplier_dilution_pct, supplier_solvent_id, function_category, function_category_override, note_tier_hint, note_tier_hint_override, is_bridge_candidate, is_solvent, facets:raw_material_facets(facet_key, weight)";
 
 /** Harga terbaru per tier, dari view rm_current_prices. */
 async function fetchPrices(

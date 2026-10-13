@@ -106,6 +106,7 @@ describe("dosis awal & tier tujuan", () => {
     id: "x",
     name: "X",
     category: null,
+    functionSource: "supplier",
     impact: 100,
     impactBasis: "as_sold",
     supplierDilutionPct: 100,
