@@ -50,3 +50,39 @@ export function parseSupplierDilution(name: string): SupplierDilution | null {
     solventToken: match[2].toUpperCase() as SolventToken,
   };
 }
+
+/**
+ * Produk pelarut itu sendiri, dikenali dari namanya.
+ *
+ * Dipakai untuk dua hal: menandai `is_solvent` dan menyambungkan baris encer
+ * ke baris pelarutnya (`supplier_solvent_id`).
+ *
+ * Polanya sengaja menuntut nama lengkap, bukan tokennya. "Indolene 50 Castor"
+ * memakai castor sebagai pelarut — dia bukan castor oil, dan menandainya
+ * sebagai pelarut akan mengeluarkannya dari hitungan bahan aktif.
+ */
+export const SOLVENT_PRODUCTS: Record<SolventToken, RegExp> = {
+  TEC: /triethyl\s*citrate/i,
+  BB: /benzyl\s*benzoate/i,
+  DPG: /dipropylene\s*glycol/i,
+  IPM: /isopropyl\s*myristate/i,
+  ETHA: /\bethanol\b/i,
+  ETHANOL: /\bethanol\b/i,
+  CASTOR: /castor\s*oil/i,
+};
+
+/**
+ * Apakah bahan ini pelarut.
+ *
+ * Kategori supplier saja tidak cukup: Benzyl Benzoate ada di kategori
+ * "Aromachemical" padahal dia pelarut dilusi yang paling sering dipakai.
+ * Kalau tidak ditandai, BB yang menumpuk dari belasan baris encer akan
+ * terhitung sebagai bahan pewangi aktif dan piramida nyatanya jadi bohong.
+ */
+export function isSolventProduct(
+  name: string,
+  category?: string | null,
+): boolean {
+  if (category && category.trim().toLowerCase() === "solvent") return true;
+  return Object.values(SOLVENT_PRODUCTS).some((re) => re.test(name));
+}

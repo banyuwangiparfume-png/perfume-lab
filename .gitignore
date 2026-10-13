@@ -40,3 +40,6 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 .env*.local
+
+# pricelist supplier hasil konversi — jangan ikut ke repo publik
+/seed/import/

@@ -93,19 +93,28 @@ describe("parseMaterialRows", () => {
     expect(failures[0]).toMatchObject({ line: 2, reason: "nama kosong" });
   });
 
-  it("CAS ganda dilaporkan beserta baris pasangannya", () => {
-    const { failures } = parseMaterialRows(
-      [row(), row({ name: "Ambrofix" })],
+  it("CAS yang sama dengan nama beda TETAP diterima — itu produk berbeda", () => {
+    // Kasus nyata dari pricelist Ecofragrantica 2026: satu CAS dipakai produk
+    // yang beda pelarut, beda grade, atau beda nama dagang. Menolaknya berarti
+    // membuang produk yang betul-betul dijual.
+    const { rows, failures } = parseMaterialRows(
+      [
+        row({ name: "Benzoin 50-etha", cas_number: "9000-05-09" }),
+        row({ name: "Benzoin 50-bb", cas_number: "9000-05-09" }),
+      ],
       identityMap,
     );
-    expect(failures[0].reason).toBe("CAS ganda dengan baris 1");
+    expect(failures).toHaveLength(0);
+    expect(rows.map((r) => r.name)).toEqual([
+      "Benzoin 50-etha",
+      "Benzoin 50-bb",
+    ]);
   });
 
-  it("nama ganda tanpa CAS ditolak supaya import tetap idempoten", () => {
-    const { failures } = parseMaterialRows(
-      [row({ cas_number: "" }), row({ cas_number: "" })],
-      identityMap,
-    );
+  it("nama ganda ditolak supaya import tetap idempoten", () => {
+    // Nama produk adalah identitasnya, jadi di sinilah duplikat sungguhan
+    // tertangkap — termasuk saat keduanya punya CAS.
+    const { failures } = parseMaterialRows([row(), row()], identityMap);
     expect(failures[0].reason).toContain("nama ganda dengan baris 1");
   });
 

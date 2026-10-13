@@ -4,12 +4,31 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { describeDbError, fail, ok, type ActionResult } from "@/lib/action-result";
 import {
+  facetize,
+  isBridgeCandidate,
+  tierHintFromFamily,
+  type FacetKeywordConfig,
+} from "@/lib/calc/facetize";
+import {
+  isSolventProduct,
+  parseSupplierDilution,
+  SOLVENT_PRODUCTS,
+  type SolventToken,
+} from "@/lib/calc/supplierDilution";
+import {
   parseMaterialRows,
   type MaterialColumn,
   type ParseFailure,
 } from "@/lib/csv/parseMaterials";
 import { getOwnerId } from "@/lib/owner";
 import { getDb } from "@/lib/supabase/db";
+import facetKeywords from "@/seed/facet-keywords.json";
+
+/**
+ * Konfigurasi facet di-bundle, bukan dibaca dari disk saat runtime: di Vercel
+ * berkas seed tidak selalu ikut ke bundel server.
+ */
+const FACET_CONFIG = facetKeywords as unknown as FacetKeywordConfig;
 
 const CHUNK = 200;
 
@@ -253,12 +272,15 @@ export async function validateMaterialsCsv(
 type GlobalIndex = {
   byCas: Map<string, string>;
   byName: Map<string, string>;
+  /** CAS yang dipakai lebih dari satu bahan — tidak bisa jadi kunci */
+  ambiguousCas: Set<string>;
 };
 
 async function loadGlobalIndex(): Promise<GlobalIndex> {
   const db = getDb();
   const byCas = new Map<string, string>();
   const byName = new Map<string, string>();
+  const ambiguousCas = new Set<string>();
 
   // Pricelist bisa 400+ baris dan master bisa tumbuh; ambil berhalaman supaya
   // tidak kena batas baris PostgREST.
@@ -272,26 +294,42 @@ async function loadGlobalIndex(): Promise<GlobalIndex> {
 
     if (error) throw new Error(describeDbError(error));
     for (const row of data ?? []) {
-      if (row.cas_number) byCas.set(row.cas_number, row.id);
+      if (row.cas_number) {
+        if (byCas.has(row.cas_number)) ambiguousCas.add(row.cas_number);
+        else byCas.set(row.cas_number, row.id);
+      }
       byName.set(row.name.toLowerCase(), row.id);
     }
     if (!data || data.length < PAGE) break;
   }
 
-  return { byCas, byName };
+  return { byCas, byName, ambiguousCas };
 }
 
-/** Kunci pencocokan utama adalah CAS number, nama hanya cadangan. */
+/**
+ * Kunci pencocokan utama adalah NAMA produk; CAS hanya cadangan, dan hanya
+ * kalau CAS itu cuma dipakai satu bahan.
+ *
+ * Dibalik dari rancangan awal setelah pricelist Ecofragrantica 2026 memperlihatkan
+ * satu CAS dipakai beberapa produk berbeda ("Benzoin 50-etha" dan "Benzoin
+ * 50-bb", "Clove Leaf Oil" dan "Clove Bud Oil"). Dengan CAS sebagai kunci
+ * utama, import kedua akan menimpa produk yang satu dengan harga produk yang
+ * lain — diam-diam, dan tidak ada yang akan sadar sampai HPP-nya aneh.
+ *
+ * CAS yang benar-benar unik tetap berguna: dia yang membuat produk yang
+ * DIGANTI NAMANYA oleh supplier tetap dikenali sebagai bahan yang sama.
+ */
 function matchExisting(
   index: GlobalIndex,
   cas: string | null,
   name: string,
 ): string | null {
-  if (cas) {
-    const byCas = index.byCas.get(cas);
-    if (byCas) return byCas;
+  const byName = index.byName.get(name.toLowerCase());
+  if (byName) return byName;
+  if (cas && !index.ambiguousCas.has(cas)) {
+    return index.byCas.get(cas) ?? null;
   }
-  return index.byName.get(name.toLowerCase()) ?? null;
+  return null;
 }
 
 /**
@@ -323,6 +361,22 @@ export async function importMaterialsCsv(
 
   const payload = rows.map((r) => {
     const id = matchExisting(existing, r.cas_number, r.name);
+
+    // Semua yang di bawah ini DITURUNKAN dari data supplier, bukan diketik
+    // user, jadi aman disegarkan tiap import. Koreksi user hidup di kolom lain
+    // (odor_impact_override, odor_impact_note, personal_note) yang memang tidak
+    // pernah masuk payload ini.
+    const facets = facetize(
+      {
+        name: r.name,
+        synonym: r.synonym,
+        family: r.family,
+        odourProfile: r.odour_profile,
+      },
+      FACET_CONFIG,
+    );
+    const dilution = parseSupplierDilution(r.name);
+
     return {
       ...(id ? { id } : {}),
       owner_id: null,
@@ -335,8 +389,28 @@ export async function importMaterialsCsv(
       function_category: r.function_category,
       odor_impact: r.odor_impact,
       tgsc_url: r.tgsc_url,
+      // Dilusi yang sudah menempel dari pabrik, dibaca dari nama produk.
+      // 100 = neat. supplier_solvent_id disambungkan di pass kedua, setelah
+      // semua bahan punya id.
+      supplier_dilution_pct: dilution?.pct ?? 100,
+      is_solvent: isSolventProduct(r.name, r.category),
+      is_bridge_candidate: isBridgeCandidate(
+        {
+          name: r.name,
+          synonym: r.synonym,
+          family: r.family,
+          odourProfile: r.odour_profile,
+          category: r.category,
+          impact: r.odor_impact,
+        },
+        facets,
+        FACET_CONFIG,
+      ),
+      note_tier_hint: tierHintFromFamily(r.family, FACET_CONFIG),
       _line: r.line,
       _isNew: !id,
+      _facets: facets,
+      _solventToken: dilution?.solventToken ?? null,
     };
   });
 
@@ -354,7 +428,7 @@ export async function importMaterialsCsv(
     const { data, error } = await db
       .from("raw_materials")
       .upsert(
-        batch.map(({ _line, _isNew, ...r }) => r),
+        batch.map(({ _line, _isNew, _facets, _solventToken, ...r }) => r),
         { onConflict: "id" },
       )
       .select("id, name, cas_number");
@@ -365,7 +439,9 @@ export async function importMaterialsCsv(
   for (const batch of chunk(toInsert)) {
     const { data, error } = await db
       .from("raw_materials")
-      .insert(batch.map(({ _line, _isNew, id: _id, ...r }) => r))
+      .insert(
+        batch.map(({ _line, _isNew, _facets, _solventToken, id: _id, ...r }) => r),
+      )
       .select("id, name, cas_number");
     if (error) return fail(`Gagal menambah bahan: ${describeDbError(error)}`);
     mapBackIds(batch, data ?? [], lineToId);
@@ -393,6 +469,10 @@ export async function importMaterialsCsv(
     if (error) return fail(`Gagal menyimpan harga: ${describeDbError(error)}`);
   }
 
+  // --- pass kedua: hal-hal yang baru bisa dikerjakan setelah semua punya id --
+  await linkSupplierSolvents(payload, lineToId);
+  await writeFacets(payload, lineToId);
+
   revalidatePath("/materials");
   revalidatePath("/admin/materials");
   revalidatePath("/");
@@ -404,6 +484,118 @@ export async function importMaterialsCsv(
     priceRows: priceRows.length,
     failures,
   });
+}
+
+type ImportRow = {
+  _line: number;
+  _facets: Record<string, number>;
+  _solventToken: SolventToken | null;
+};
+
+/**
+ * Menyambungkan baris encer ke baris pelarutnya.
+ *
+ * "Indole 50 BB" perlu tahu bahwa BB-nya adalah baris Benzyl Benzoate yang
+ * juga ada di master — tanpa itu, pelarut yang terbawa tidak bisa dijumlahkan
+ * dan laporan pelarut jadi kosong.
+ *
+ * Pelarut yang tidak ada di master dibiarkan null, bukan dipaksakan: lebih
+ * baik satu kolom kosong daripada menunjuk ke bahan yang salah.
+ */
+async function linkSupplierSolvents(
+  payload: ImportRow[],
+  lineToId: Map<number, string>,
+) {
+  const needed = payload.filter((p) => p._solventToken);
+  if (!needed.length) return;
+
+  const db = getDb();
+  const { data } = await db
+    .from("raw_materials")
+    .select("id, name")
+    .is("owner_id", null)
+    .eq("is_solvent", true);
+
+  const idByToken = new Map<SolventToken, string>();
+  for (const [token, pattern] of Object.entries(SOLVENT_PRODUCTS)) {
+    const hit = (data ?? []).find((m) => pattern.test(m.name));
+    if (hit) idByToken.set(token as SolventToken, hit.id);
+  }
+
+  const updates = new Map<string, string[]>();
+  for (const row of needed) {
+    const id = lineToId.get(row._line);
+    const solventId = idByToken.get(row._solventToken!);
+    if (!id || !solventId) continue;
+    const list = updates.get(solventId) ?? [];
+    list.push(id);
+    updates.set(solventId, list);
+  }
+
+  for (const [solventId, ids] of updates) {
+    for (const batch of chunk(ids)) {
+      await db
+        .from("raw_materials")
+        .update({ supplier_solvent_id: solventId })
+        .in("id", batch);
+    }
+  }
+}
+
+/**
+ * Menulis vektor facet tiap bahan.
+ *
+ * Bahan dengan `facets_manual = true` dilewati: facet-nya sudah dikurasi
+ * sendiri, dan hasil hitungan otomatis tidak boleh menimpanya.
+ */
+async function writeFacets(
+  payload: ImportRow[],
+  lineToId: Map<number, string>,
+) {
+  const db = getDb();
+
+  const ids = payload
+    .map((p) => lineToId.get(p._line))
+    .filter((id): id is string => !!id);
+  if (!ids.length) return;
+
+  const manual = new Set<string>();
+  for (const batch of chunk(ids)) {
+    const { data } = await db
+      .from("raw_materials")
+      .select("id")
+      .eq("facets_manual", true)
+      .in("id", batch);
+    for (const row of data ?? []) manual.add(row.id);
+  }
+
+  const rows: { raw_material_id: string; facet_key: string; weight: number }[] =
+    [];
+  const replacing: string[] = [];
+
+  for (const p of payload) {
+    const id = lineToId.get(p._line);
+    if (!id || manual.has(id)) continue;
+    replacing.push(id);
+    for (const [facet_key, weight] of Object.entries(p._facets)) {
+      rows.push({ raw_material_id: id, facet_key, weight });
+    }
+  }
+
+  // Ganti utuh, bukan tambah: bahan yang facet-nya menyusut setelah namanya
+  // diperbaiki supplier tidak boleh menyisakan facet lama.
+  for (const batch of chunk(replacing)) {
+    const { error } = await db
+      .from("raw_material_facets")
+      .delete()
+      .in("raw_material_id", batch);
+    if (error) throw new Error(describeDbError(error));
+  }
+
+  for (const batch of chunk(rows)) {
+    const { error } = await db.from("raw_material_facets").insert(batch);
+    if (error) throw new Error(describeDbError(error));
+  }
 }
 
 function mapBackIds(

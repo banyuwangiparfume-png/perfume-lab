@@ -187,7 +187,6 @@ export function parseMaterialRows(
 ): ParseResult {
   const rows: ParsedMaterial[] = [];
   const failures: ParseFailure[] = [];
-  const seenCas = new Map<string, number>();
   const seenName = new Map<string, number>();
 
   const pick = (row: Record<string, unknown>, col: MaterialColumn) => {
@@ -206,28 +205,25 @@ export function parseMaterialRows(
     }
 
     const cas = text(pick(row, "cas_number"));
-    if (cas) {
-      const previous = seenCas.get(cas);
-      if (previous) {
-        failures.push({
-          line,
-          reason: `CAS ganda dengan baris ${previous}`,
-          raw,
-        });
-        return;
-      }
-    } else {
-      // Tanpa CAS, nama jadi kunci pencocokan — jadi nama ganda juga ditolak,
-      // kalau tidak import jadi tidak idempoten.
-      const previous = seenName.get(name.toLowerCase());
-      if (previous) {
-        failures.push({
-          line,
-          reason: `nama ganda dengan baris ${previous} dan tidak punya CAS untuk membedakan`,
-          raw,
-        });
-        return;
-      }
+
+    // Nama produk adalah identitasnya, BUKAN CAS.
+    //
+    // Satu CAS bisa dipakai beberapa produk yang berbeda nyata: "Benzoin
+    // 50-etha" dan "Benzoin 50-bb" beda pelarut, "Benzylidine Aceton 80-etha"
+    // versi encer dari yang neat, dan "Clove Leaf Oil" dengan "Clove Bud Oil"
+    // dikasih CAS yang sama oleh suppliernya padahal minyaknya beda. Pricelist
+    // Ecofragrantica 2026 punya 22 tabrakan semacam itu — menolaknya sebagai
+    // duplikat berarti membuang 22 produk yang betul-betul dijual.
+    //
+    // CAS tetap disimpan sebagai data, cuma tidak dipakai sebagai kunci.
+    const previous = seenName.get(name.toLowerCase());
+    if (previous) {
+      failures.push({
+        line,
+        reason: `nama ganda dengan baris ${previous}`,
+        raw,
+      });
+      return;
     }
 
     const impactRaw = parseNumber(pick(row, "odor_impact"));
@@ -278,8 +274,7 @@ export function parseMaterialRows(
     }
     if (priceFailed) return;
 
-    if (cas) seenCas.set(cas, line);
-    else seenName.set(name.toLowerCase(), line);
+    seenName.set(name.toLowerCase(), line);
 
     rows.push({
       line,
