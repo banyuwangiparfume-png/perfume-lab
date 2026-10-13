@@ -48,8 +48,8 @@ Di **SQL Editor**, tempel dan jalankan **berurutan**:
 | 7 | `supabase/migrations/0007_v2_enums_and_alters.sql` |
 | 8 | `supabase/migrations/0008_v2_tables.sql` |
 | 9 | `supabase/migrations/0009_v2_rls.sql` |
-| 10 | `supabase/seed/seed.sql` |
-| 11 | `supabase/seed/facets.sql` |
+| 10 | `supabase/migrations/0010_seed_facets.sql` |
+| 11 | `supabase/seed/seed.sql` |
 
 `seed.sql` membuat user dummy di `auth.users` (tanpa password — tidak bisa
 dipakai login, fungsinya hanya memegang kepemilikan data pengembangan) beserta

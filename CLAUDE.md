@@ -91,5 +91,5 @@ lib/legacy/calc/ kalkulasi v1 berbasis gram; dipakai layar formula lama sampai
 lib/data/        pembacaan database (server-only)
 app/actions/     server action (mutasi)
 seed/            bridge-db.json · facet-keywords.json · calc-fixture-01.json
-supabase/        migrations/ + seed/
+supabase/        migrations/ (0001-0010) + seed/ + config.toml
 ```
