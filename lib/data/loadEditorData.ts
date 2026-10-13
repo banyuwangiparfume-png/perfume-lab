@@ -33,20 +33,47 @@ const num = (v: unknown, fallback = 0) => {
  * harus menimbang setiap kandidat terhadap formula yang sedang dibuka. Memuat
  * ulang per ketikan justru akan membuat panel analisa tersendat.
  */
+/** Satu halaman PostgREST. Lebih kecil dari batas bawaan supaya aman. */
+const PAGE = 1000;
+
+/**
+ * Mengambil seluruh baris, berapa pun jumlahnya.
+ *
+ * PostgREST memotong jawaban di batas barisnya tanpa error dan tanpa tanda.
+ * Kueri yang hari ini muat belum tentu muat bulan depan, dan gejalanya bukan
+ * halaman gagal — melainkan angka yang diam-diam salah.
+ */
+async function fetchAllPages<T>(
+  query: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
+): Promise<T[]> {
+  const out: T[] = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await query(from, from + PAGE - 1);
+    if (error) throw new Error(`Gagal memuat data: ${error.message}`);
+    out.push(...(data ?? []));
+    if (!data || data.length < PAGE) break;
+  }
+  return out;
+}
 export async function loadEditorData(formulaId: string): Promise<EditorData> {
   const db = getDb();
   const ownerId = await getOwnerId();
 
-  const [materialsRes, facetsRes, rulesRes, stockRes, settingsRes, fosRes, accords] =
+  const [materialRows, facetsRes, rulesRes, stockRes, settingsRes, fosRes, accords] =
     await Promise.all([
-      db
-        .from("raw_materials")
-        .select(
-          "id, name, synonym, cas_number, category, family, odour_profile, odor_impact, odor_impact_override, impact_basis, supplier_dilution_pct, supplier_solvent_id, function_category, note_tier_hint, is_bridge_candidate, is_solvent, facets:raw_material_facets(facet_key, weight)",
-        )
-        .or(`owner_id.is.null,owner_id.eq.${ownerId}`)
-        .eq("is_active", true)
-        .order("name"),
+      // Berhalaman karena master bahan akan melewati batas baris PostgREST
+      // begitu pricelist berikutnya masuk.
+      fetchAllPages((from, to) =>
+        db
+          .from("raw_materials")
+          .select(
+            "id, name, synonym, cas_number, category, family, odour_profile, odor_impact, odor_impact_override, impact_basis, supplier_dilution_pct, supplier_solvent_id, function_category, note_tier_hint, is_bridge_candidate, is_solvent, facets:raw_material_facets(facet_key, weight)",
+          )
+          .or(`owner_id.is.null,owner_id.eq.${ownerId}`)
+          .eq("is_active", true)
+          .order("name")
+          .range(from, to),
+      ),
       db.from("facets").select("*").order("sort_order"),
       db
         .from("bridge_rules")
@@ -67,7 +94,7 @@ export async function loadEditorData(formulaId: string): Promise<EditorData> {
       listAccordsForPicker(formulaId),
     ]);
 
-  for (const r of [materialsRes, facetsRes, rulesRes, stockRes, fosRes]) {
+  for (const r of [facetsRes, rulesRes, stockRes, fosRes]) {
     if (r.error) throw new Error(`Gagal memuat data editor: ${r.error.message}`);
   }
 
@@ -91,13 +118,26 @@ export async function loadEditorData(formulaId: string): Promise<EditorData> {
     facets: { facet_key: string; weight: number }[] | null;
   };
 
-  const rows = (materialsRes.data ?? []) as unknown as MaterialRow[];
+  const rows = materialRows as unknown as MaterialRow[];
 
-  // Harga diambil sekaligus untuk semua bahan — satu kueri, bukan satu per baris.
-  const { data: priceRows, error: priceErr } = await db
-    .from("rm_current_prices")
-    .select("raw_material_id, tier_size, price_idr");
-  if (priceErr) throw new Error(`Gagal memuat harga: ${priceErr.message}`);
+  // Harga diambil sekaligus untuk semua bahan — satu kueri per halaman, bukan
+  // satu kueri per baris.
+  //
+  // WAJIB berhalaman: PostgREST memotong jawaban di 1.000 baris TANPA memberi
+  // tahu. Pricelist 2026 saja sudah 2.595 baris harga, jadi tanpa ini sebagian
+  // besar bahan kehilangan harganya diam-diam dan HPP-nya jadi Rp0 — terlihat
+  // seperti data yang belum diisi, bukan seperti bug.
+  const priceRows = await fetchAllPages<{
+    raw_material_id: string | null;
+    tier_size: number | null;
+    price_idr: number | null;
+  }>((from, to) =>
+    db
+      .from("rm_current_prices")
+      .select("raw_material_id, tier_size, price_idr")
+      .order("raw_material_id")
+      .range(from, to),
+  );
 
   const prices = new Map<string, Record<number, number>>();
   for (const p of priceRows ?? []) {
