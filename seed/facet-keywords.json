@@ -1,0 +1,425 @@
+{
+ "version": 1,
+ "facets": {
+  "citrus": {
+   "label": "Citrus",
+   "keywords": [
+    "citrus",
+    "citrusy",
+    "lemon",
+    "lime",
+    "orange",
+    "bergamot",
+    "grapefruit",
+    "mandarin",
+    "tangerine",
+    "yuzu",
+    "peel",
+    "peely",
+    "zesty",
+    "pamplemousse",
+    "neroli",
+    "petitgrain"
+   ]
+  },
+  "green": {
+   "label": "Green",
+   "keywords": [
+    "green",
+    "leafy",
+    "grassy",
+    "galbanum",
+    "stems",
+    "leaf",
+    "leaves",
+    "foliage",
+    "cucumber",
+    "pea",
+    "vegetable",
+    "mown",
+    "greenery",
+    "violet-leaf"
+   ]
+  },
+  "aromatic": {
+   "label": "Aromatik/Herbal",
+   "keywords": [
+    "herbal",
+    "aromatic",
+    "lavender",
+    "sage",
+    "rosemary",
+    "thyme",
+    "basil",
+    "mint",
+    "minty",
+    "spearmint",
+    "peppermint",
+    "camphoreous",
+    "eucalyptus",
+    "cooling",
+    "menthol",
+    "anise",
+    "fennel",
+    "tea",
+    "tea-like",
+    "mate"
+   ]
+  },
+  "fruity": {
+   "label": "Fruity",
+   "keywords": [
+    "fruity",
+    "fruit",
+    "apple",
+    "pear",
+    "peach",
+    "apricot",
+    "plum",
+    "berry",
+    "raspberry",
+    "strawberry",
+    "currant",
+    "blackcurrant",
+    "cherry",
+    "grape",
+    "melon",
+    "pineapple",
+    "banana",
+    "tropical",
+    "mango",
+    "juicy",
+    "jammy",
+    "fig",
+    "rhubarb",
+    "nectarine",
+    "prune",
+    "raisin",
+    "watermelon"
+   ]
+  },
+  "floral": {
+   "label": "Floral",
+   "keywords": [
+    "floral",
+    "florals",
+    "flower",
+    "flowers",
+    "muguet",
+    "lily",
+    "hyacinth",
+    "lilac",
+    "magnolia",
+    "geranium",
+    "peony",
+    "cyclamen",
+    "mimosa",
+    "hawthorn",
+    "honeysuckle",
+    "bois-de-rose"
+   ]
+  },
+  "rose": {
+   "label": "Rose",
+   "keywords": [
+    "rose",
+    "rosy",
+    "geranium"
+   ]
+  },
+  "white": {
+   "label": "White floral",
+   "keywords": [
+    "jasmin",
+    "jasmine",
+    "tuberose",
+    "gardenia",
+    "orangeflower",
+    "neroli",
+    "ylang",
+    "indolic",
+    "plumeria",
+    "white-floral"
+   ]
+  },
+  "powdery": {
+   "label": "Powdery/Iris",
+   "keywords": [
+    "powdery",
+    "powder",
+    "violet",
+    "orris",
+    "heliotrope",
+    "ionone",
+    "cosmetic",
+    "ambrette"
+   ]
+  },
+  "clean": {
+   "label": "Clean/Aldehydic",
+   "keywords": [
+    "clean",
+    "aldehydic",
+    "soapy",
+    "laundered",
+    "cloth",
+    "cotton",
+    "waxy",
+    "fatty"
+   ]
+  },
+  "aquatic": {
+   "label": "Marine/Ozonic",
+   "keywords": [
+    "marine",
+    "ozone",
+    "ozonic",
+    "aquatic",
+    "watery",
+    "sea",
+    "seaweed",
+    "salty",
+    "salty-mineral",
+    "dewy",
+    "breeze",
+    "metallic"
+   ]
+  },
+  "spicy": {
+   "label": "Spicy",
+   "keywords": [
+    "spicy",
+    "spice",
+    "clove",
+    "cinnamon",
+    "pepper",
+    "peppery",
+    "nutmeg",
+    "cardamom",
+    "cumin",
+    "allspice",
+    "carnation",
+    "eugenolic",
+    "mace",
+    "saffron"
+   ]
+  },
+  "woody": {
+   "label": "Woody",
+   "keywords": [
+    "woody",
+    "wood",
+    "cedar",
+    "sandalwood",
+    "vetiver",
+    "agarwood",
+    "oud",
+    "guaiac",
+    "pine"
+   ]
+  },
+  "earthy": {
+   "label": "Earthy/Mossy",
+   "keywords": [
+    "earthy",
+    "patchouli",
+    "moss",
+    "mossy",
+    "oakmoss",
+    "rooty",
+    "root",
+    "musty",
+    "mushroom",
+    "weedy"
+   ]
+  },
+  "amber": {
+   "label": "Amber",
+   "keywords": [
+    "amber",
+    "ambergris",
+    "labdanum",
+    "ambery"
+   ]
+  },
+  "resin": {
+   "label": "Balsamic/Resin",
+   "keywords": [
+    "balsamic",
+    "balsam",
+    "resinous",
+    "resin",
+    "incense",
+    "myrrh",
+    "benzoin",
+    "olibanum",
+    "frankincense"
+   ]
+  },
+  "gourmand": {
+   "label": "Sweet/Gourmand",
+   "keywords": [
+    "vanilla",
+    "caramellic",
+    "caramel",
+    "honey",
+    "honeyed",
+    "tonka",
+    "coumarinic",
+    "chocolate",
+    "cocoa",
+    "coffee",
+    "sugar",
+    "candy",
+    "candy-like",
+    "maple",
+    "almond",
+    "nutty",
+    "gourmand",
+    "syrup"
+   ]
+  },
+  "creamy": {
+   "label": "Creamy/Lactonic",
+   "keywords": [
+    "creamy",
+    "lactonic",
+    "coconut",
+    "milky",
+    "dairy",
+    "buttery",
+    "cream",
+    "milk"
+   ]
+  },
+  "musk": {
+   "label": "Musk",
+   "keywords": [
+    "musk",
+    "musky",
+    "skin"
+   ]
+  },
+  "animalic": {
+   "label": "Animalic/Leather",
+   "keywords": [
+    "animal",
+    "animalic",
+    "leather",
+    "leathery",
+    "castoreum",
+    "fecal",
+    "sweaty",
+    "urinous",
+    "catty"
+   ]
+  },
+  "smoky": {
+   "label": "Smoky/Tobacco",
+   "keywords": [
+    "smoky",
+    "tobacco",
+    "burnt",
+    "phenolic",
+    "hay",
+    "roasted",
+    "medicinal",
+    "tar"
+   ]
+  }
+ },
+ "family_to_facet": {
+  "Floral": "floral",
+  "Sweet/Balsamic": "gourmand",
+  "Fruity": "fruity",
+  "Herbal": "aromatic",
+  "Green": "green",
+  "Citrus": "citrus",
+  "Woody": "woody",
+  "Musk / Animalic": "musk",
+  "Mineral": "aquatic"
+ },
+ "herbal_family_spicy_override": "Jika family Herbal dan 'spicy' ada di 3 deskriptor pertama, family dipetakan ke spicy",
+ "weights": {
+  "descriptor_first": 1.0,
+  "descriptor_last": 0.5,
+  "name_or_synonym_hit": 0.4,
+  "family": 0.4,
+  "generic_sweet": 0.25,
+  "subfacet_to_floral": 0.4,
+  "min_kept_after_normalize": 0.08
+ },
+ "phrase_joins": {
+  "bois de rose": "bois-de-rose",
+  "violet leaf": "violet-leaf"
+ },
+ "manual_overrides": {
+  "hedione": {
+   "floral": 0.75,
+   "white": 0.4,
+   "citrus": 0.4,
+   "green": 0.2,
+   "fruity": 0.2
+  },
+  "cashmeran": {
+   "musk": 0.6,
+   "woody": 0.6,
+   "spicy": 0.35,
+   "clean": 0.2
+  },
+  "tonka coumarin": {
+   "gourmand": 0.85,
+   "smoky": 0.3,
+   "green": 0.25,
+   "aromatic": 0.2
+  },
+  "safranal": {
+   "spicy": 0.6,
+   "animalic": 0.45,
+   "smoky": 0.4,
+   "aromatic": 0.3
+  }
+ },
+ "bridge_candidate": {
+  "categories": [
+   "Absolu",
+   "Aldehyde",
+   "Aromachemical",
+   "Ekstrak",
+   "Essential Oil",
+   "Natural Isolate"
+  ],
+  "exclude_impact_gte": 1000,
+  "exclude_if_first4_descriptors_contain": [
+   "cheesy",
+   "sweaty",
+   "fecal",
+   "sulfurous",
+   "sulfuric",
+   "fishy",
+   "garlic",
+   "onion",
+   "meaty",
+   "urinous",
+   "fusel",
+   "sour",
+   "yeasty",
+   "chicken",
+   "catty",
+   "potato",
+   "tomato"
+  ]
+ },
+ "note_tier_hint_from_family": {
+  "Citrus": "top",
+  "Green": "top",
+  "Aldehyde": "top",
+  "Herbal": "mid",
+  "Floral": "mid",
+  "Fruity": "mid",
+  "Mineral": "mid",
+  "Woody": "base",
+  "Musk / Animalic": "base",
+  "Sweet/Balsamic": "base"
+ }
+}

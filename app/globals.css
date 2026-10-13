@@ -1,0 +1,173 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+/*
+  Design system: iOS SaaS Storefront (lihat 04-uiux-design-admin.md §1).
+  Light-only sengaja — aplikasi ini isinya tabel angka yang dibaca lama,
+  latar terang mengurangi kelelahan mata saat input gramasi.
+*/
+
+@theme inline {
+  /* shadcn bridge */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  --font-sans: var(--font-dm-sans);
+  --font-mono: var(--font-geist-mono);
+  --font-heading: var(--font-dm-sans);
+
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-2xl: 20px;
+  --radius-3xl: 24px;
+  --radius-4xl: 28px;
+
+  /* token khas aplikasi ini — dipakai sebagai utility: bg-surface, text-subtle, dst */
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
+  --color-border-strong: var(--border-strong);
+  --color-subtle: var(--text-subtle);
+  --color-brand: var(--brand);
+  --color-brand-soft: var(--brand-soft);
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+  --color-impact-low: var(--impact-low);
+  --color-impact-mid: var(--impact-mid);
+  --color-impact-high: var(--impact-high);
+  --color-impact-xhigh: var(--impact-xhigh);
+  --color-fn-diffuser: var(--fn-diffuser);
+  --color-fn-modifier: var(--fn-modifier);
+  --color-fn-bridger: var(--fn-bridger);
+  --color-fn-fixative: var(--fn-fixative);
+  --color-row-fo: var(--row-fo);
+  --color-row-subformula: var(--row-subformula);
+
+  --shadow-card: 0 1px 2px rgb(16 24 40 / 0.06), 0 1px 3px rgb(16 24 40 / 0.1);
+  --shadow-card-lg: 0 4px 12px rgb(16 24 40 / 0.08);
+}
+
+:root {
+  /* Permukaan */
+  --bg: #f0f2f5;
+  --surface: #ffffff;
+  --surface-muted: #f7f8fa;
+  --border: #e3e6ea;
+  --border-strong: #cfd4da;
+
+  /* Teks */
+  --text: #11151a;
+  --text-muted: #5c6672;
+  --text-subtle: #8b949e;
+
+  /* Aksen */
+  --brand: #2563eb;
+  --brand-soft: #dbeafe;
+  --cta: #0a0a0a;
+  --cta-text: #ffffff;
+
+  /* Semantik */
+  --ok: #0f9d58;
+  --ok-soft: #e3f5ea;
+  --warn: #c2770b;
+  --warn-soft: #fdf3e2;
+  --danger: #d14343;
+  --danger-soft: #fdecec;
+  --info: #2563eb;
+  --info-soft: #e8f0fe;
+
+  /* Skala impact — badge & chart. Baseline bahan Bridger = 100. */
+  --impact-low: #9aa3ad;
+  --impact-mid: #2563eb;
+  --impact-high: #e07b16;
+  --impact-xhigh: #d14343;
+
+  /* Kategori fungsi — harus konsisten di seluruh aplikasi */
+  --fn-diffuser: #e07b16;
+  --fn-modifier: #2563eb;
+  --fn-bridger: #0f9d58;
+  --fn-fixative: #7c5cbf;
+
+  /* Latar baris editor per jenis komponen — petunjuk, bukan highlight */
+  --row-fo: #fbfaf7;
+  --row-subformula: #f7f9fc;
+
+  /* --- pemetaan ke variabel shadcn --- */
+  --background: var(--bg);
+  --foreground: var(--text);
+  --card: var(--surface);
+  --card-foreground: var(--text);
+  --popover: var(--surface);
+  --popover-foreground: var(--text);
+  --primary: var(--cta);
+  --primary-foreground: var(--cta-text);
+  --secondary: var(--surface-muted);
+  --secondary-foreground: var(--text);
+  --muted: var(--surface-muted);
+  --muted-foreground: var(--text-muted);
+  --accent: var(--surface-muted);
+  --accent-foreground: var(--text);
+  --destructive: var(--danger);
+  --input: var(--border-strong);
+  --ring: var(--brand);
+
+  --chart-1: var(--fn-diffuser);
+  --chart-2: var(--fn-modifier);
+  --chart-3: var(--fn-bridger);
+  --chart-4: var(--fn-fixative);
+  --chart-5: var(--text-subtle);
+
+  --radius: 12px;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    @apply font-sans;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+@layer utilities {
+  /*
+    Semua kolom angka wajib tabular-nums dan rata kanan.
+    Gramasi 3 desimal yang tidak sejajar sangat sulit dibandingkan sekilas.
+  */
+  .numeric {
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+  }
+}

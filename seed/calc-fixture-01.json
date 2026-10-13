@@ -1,0 +1,216 @@
+{
+ "name": "Fixture 01 — piramida 15/25/60, dilusi dua lapis, BB menumpuk",
+ "source": "Pricelist Ecofragrantica 2026 (harga tier 10 g), facet dari bridge-db.json",
+ "input": {
+  "batchG": 10,
+  "pyramid": {
+   "top": 15,
+   "mid": 25,
+   "base": 60
+  },
+  "priceTier": 10,
+  "lines": [
+   {
+    "tier": "top",
+    "material": "Bergamot Oil Italy FCF",
+    "pct": 10,
+    "locked": true,
+    "userDilutionPct": 100,
+    "supplierDilutionPct": 100,
+    "impact": 100,
+    "price10": 128000
+   },
+   {
+    "tier": "top",
+    "material": "Dihydromyrcenol",
+    "pct": 5,
+    "locked": false,
+    "userDilutionPct": 100,
+    "supplierDilutionPct": 100,
+    "impact": 100,
+    "price10": 80000
+   },
+   {
+    "tier": "mid",
+    "material": "Hedione / Methyl Dihydrojasmonate",
+    "pct": 20,
+    "locked": true,
+    "userDilutionPct": 100,
+    "supplierDilutionPct": 100,
+    "impact": 65,
+    "price10": 18504
+   },
+   {
+    "tier": "mid",
+    "material": "Indole 50 BB",
+    "pct": 5,
+    "locked": true,
+    "userDilutionPct": 100,
+    "supplierDilutionPct": 50,
+    "supplierSolvent": "Benzyl Benzoate",
+    "impact": 350,
+    "price10": 83002.4
+   },
+   {
+    "tier": "base",
+    "material": "Iso E Super / Amber Fleur Pure Concentrate",
+    "pct": 25,
+    "locked": true,
+    "userDilutionPct": 100,
+    "supplierDilutionPct": 100,
+    "impact": 40,
+    "price10": 15504
+   },
+   {
+    "tier": "base",
+    "material": "Ambroxan",
+    "pct": 5,
+    "locked": true,
+    "userDilutionPct": 10,
+    "userSolvent": "Benzyl Benzoate",
+    "supplierDilutionPct": 100,
+    "impact": 400,
+    "price10": 220050
+   },
+   {
+    "tier": "base",
+    "material": "Ethylene Brassylate / Musk T",
+    "pct": 20,
+    "locked": true,
+    "userDilutionPct": 100,
+    "supplierDilutionPct": 100,
+    "impact": 40,
+    "price10": 33300
+   },
+   {
+    "tier": "base",
+    "material": "Benzyl Benzoate",
+    "pct": 10,
+    "locked": true,
+    "userDilutionPct": 100,
+    "supplierDilutionPct": 100,
+    "impact": 18,
+    "price10": 16002
+   }
+  ]
+ },
+ "expected": {
+  "allocation": {
+   "topAfterAddDHM": [
+    7.5,
+    7.5
+   ],
+   "topAfterEditBergamot10": [
+    10,
+    5
+   ]
+  },
+  "productPct": {
+   "Bergamot Oil Italy FCF": 10,
+   "Dihydromyrcenol": 5,
+   "Hedione / Methyl Dihydrojasmonate": 20,
+   "Indole 50 BB": 5,
+   "Iso E Super / Amber Fleur Pure Concentrate": 25,
+   "Ambroxan": 0.5,
+   "Ethylene Brassylate / Musk T": 20,
+   "Benzyl Benzoate": 14.5
+  },
+  "solvents": {
+   "Benzyl Benzoate": {
+    "direct": 10,
+    "fromDilution": 4.5,
+    "hiddenFromSupplier": 2.5,
+    "explicitTotal": 14.5,
+    "effectiveTotal": 17.0
+   }
+  },
+  "realPyramidActive": {
+   "top": 15,
+   "mid": 22.5,
+   "base": 45.5
+  },
+  "strengthPct": {
+   "Indole 50 BB": 25.7,
+   "Hedione / Methyl Dihydrojasmonate": 19.1,
+   "Bergamot Oil Italy FCF": 14.7,
+   "Iso E Super / Amber Fleur Pure Concentrate": 14.7,
+   "Ethylene Brassylate / Musk T": 11.7,
+   "Dihydromyrcenol": 7.3,
+   "Benzyl Benzoate": 3.8,
+   "Ambroxan": 2.9
+  },
+  "aromaTop6Pct": {
+   "floral": 19.8,
+   "citrus": 16.6,
+   "animalic": 12.3,
+   "woody": 9.0,
+   "musk": 7.4,
+   "amber": 6.7,
+   "lainnya": 28.2
+  },
+  "warnings": [
+   "R3 Benzyl Benzoate dari 3 sumber",
+   "R4 Benzyl Benzoate > 10%",
+   "R5 Indole 50 BB dominan",
+   "R8 Base aktif 45,5 vs target 60"
+  ],
+  "cost": {
+   "total": 38607.46,
+   "perGram": 3860.75,
+   "rows": {
+    "Bergamot Oil Italy FCF": 12800,
+    "Ethylene Brassylate / Musk T": 6660,
+    "Indole 50 BB": 4150.12,
+    "Dihydromyrcenol": 4000,
+    "Iso E Super / Amber Fleur Pure Concentrate": 3876,
+    "Hedione / Methyl Dihydrojasmonate": 3700.8,
+    "Benzyl Benzoate": 2320.29,
+    "Ambroxan": 1100.25
+   }
+  },
+  "scaling": {
+   "batch3g": {
+    "tier": 10,
+    "total": 11582.24
+   },
+   "batch120g": {
+    "tier": 100
+   }
+  },
+  "bridges": {
+   "crossTier": {
+    "topMid": {
+     "sim": 0.41,
+     "status": "loose",
+     "top5": [
+      "Nerol",
+      "Linalool",
+      "Neroli",
+      "Petitgrain",
+      "Citronellol"
+     ]
+    },
+    "midBase": {
+     "sim": 0.22,
+     "status": "loose",
+     "top5": [
+      "Alpha Ionone",
+      "Beta Ionone",
+      "Hexyl Cinnamic Aldehyde",
+      "Vertenex",
+      "Habanolide"
+     ]
+    },
+    "topBase": {
+     "sim": 0.06,
+     "status": "gap"
+    }
+   },
+   "note": "tierVector dibobot kekuatan (massa produk x impact); pelarut user (BB) ikut di Base"
+  }
+ },
+ "tolerance": {
+  "rupiahAndComposition": 0.01,
+  "strengthAndAroma": 0.1
+ }
+}

@@ -1,0 +1,140 @@
+import { describe, expect, it } from "vitest";
+import { DEFAULT_SETTINGS } from "../../settings";
+import {
+  bridgeStatus,
+  recommendTier,
+  sim,
+  starterDose,
+  suggestBridges,
+  topFacets,
+} from "../bridge";
+import type { FormulaContext, Material } from "../types";
+import { allMaterials, bridgeRules, materialNamed } from "./fixture";
+
+const ctx: FormulaContext = {
+  version: {
+    id: "v",
+    batchG: 10,
+    pyramid: null,
+    priceTierOverride: null,
+    lines: [],
+  },
+  materials: allMaterials(),
+  accords: new Map(),
+  fos: new Map(),
+  bridgeRules: bridgeRules(),
+  stock: new Set(),
+  settings: DEFAULT_SETTINGS,
+};
+
+const facetsOf = (name: string) => materialNamed(name)!.facets;
+
+describe("sim & status", () => {
+  it("vektor identik = 1", () => {
+    const v = facetsOf("Bergamot Oil Italy FCF");
+    expect(sim(v, v)).toBeCloseTo(1, 3);
+  });
+
+  it("vektor tanpa facet yang sama = 0", () => {
+    expect(sim({ citrus: 1 }, { woody: 1 })).toBe(0);
+  });
+
+  it("ambang status dari settings", () => {
+    const t = DEFAULT_SETTINGS.bridgeThresholds;
+    expect(bridgeStatus(0.5, t)).toBe("connected");
+    expect(bridgeStatus(0.45, t)).toBe("connected");
+    expect(bridgeStatus(0.3, t)).toBe("loose");
+    expect(bridgeStatus(0.2, t)).toBe("loose");
+    expect(bridgeStatus(0.19, t)).toBe("gap");
+  });
+
+  it("topFacets hanya mengambil arah yang cukup kuat", () => {
+    expect(topFacets({ citrus: 0.9, floral: 0.2, green: 0.31 })).toEqual(
+      new Set(["citrus", "green"]),
+    );
+  });
+});
+
+describe("suggestBridges — Bergamot ↔ Rose Oxide", () => {
+  const a = facetsOf("Bergamot Oil Italy FCF");
+  const b = facetsOf("Rose Oxide");
+  const result = suggestBridges(a, b, ctx, new Set(), { limit: 5 });
+
+  it("Linalool di urutan pertama", () => {
+    expect(result[0].name).toBe("Linalool");
+  });
+
+  it("alasannya ikut dibawa", () => {
+    expect(result[0].reason.length).toBeGreaterThan(0);
+  });
+
+  it("skor menurun", () => {
+    for (let i = 1; i < result.length; i++) {
+      expect(result[i].score).toBeLessThanOrEqual(result[i - 1].score);
+    }
+  });
+
+  it("bahan yang dikecualikan tidak muncul", () => {
+    const linaloolId = result[0].materialId;
+    const without = suggestBridges(a, b, ctx, new Set([linaloolId]), {
+      limit: 5,
+    });
+    expect(without.map((s) => s.name)).not.toContain("Linalool");
+  });
+
+  it("filter stok mengosongkan hasil kalau stok kosong", () => {
+    expect(
+      suggestBridges(a, b, ctx, new Set(), { onlyStock: true }),
+    ).toEqual([]);
+  });
+
+  it("filter stok mengembalikan hanya yang distok", () => {
+    const linaloolId = result[0].materialId;
+    const stocked: FormulaContext = {
+      ...ctx,
+      stock: new Set([linaloolId]),
+    };
+    const out = suggestBridges(a, b, stocked, new Set(), { onlyStock: true });
+    expect(out.map((s) => s.name)).toEqual(["Linalool"]);
+    expect(out[0].inStock).toBe(true);
+  });
+});
+
+describe("dosis awal & tier tujuan", () => {
+  const mk = (over: Partial<Material>): Material => ({
+    id: "x",
+    name: "X",
+    category: null,
+    impact: 100,
+    impactBasis: "as_sold",
+    supplierDilutionPct: 100,
+    supplierSolventId: null,
+    facets: {},
+    functionCategory: null,
+    noteTierHint: null,
+    isBridgeCandidate: true,
+    isSolvent: false,
+    prices: {},
+    ...over,
+  });
+
+  it("bahan lembut mulai 1%, bahan keras mulai 0,5%", () => {
+    expect(starterDose(mk({ impact: 100 }))).toBe(1);
+    expect(starterDose(mk({ impact: 150 }))).toBe(1);
+    expect(starterDose(mk({ impact: 400 }))).toBe(0.5);
+  });
+
+  it("Top ↔ Mid selalu masuk ke Mid", () => {
+    expect(recommendTier(mk({}), ["top", "mid"])).toBe("mid");
+  });
+
+  it("Mid ↔ Base ikut kebiasaan bahannya", () => {
+    expect(recommendTier(mk({ noteTierHint: "mid" }), ["mid", "base"])).toBe(
+      "mid",
+    );
+    expect(recommendTier(mk({ noteTierHint: "base" }), ["mid", "base"])).toBe(
+      "base",
+    );
+    expect(recommendTier(undefined, ["mid", "base"])).toBe("base");
+  });
+});
