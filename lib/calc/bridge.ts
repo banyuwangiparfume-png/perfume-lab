@@ -249,9 +249,22 @@ export function recommendTier(
   pair: [Tier, Tier],
 ): Tier {
   if (pair[0] === "top" && pair[1] === "mid") return "mid";
+
   if (pair[0] === "mid" && pair[1] === "base") {
-    return material?.noteTierHint === "mid" ? "mid" : "base";
+    const hint = material?.noteTierHint;
+    if (hint === "base") return "base";
+    // Bahan ber-hint TOP diantar ke Mid, bukan Base.
+    //
+    // Menyimpang dari PRD §197 yang menaruh semua yang bukan "mid" di Base.
+    // Alasannya: menaruh bahan yang menguap cepat di Base adalah yang terburuk
+    // dari dua pilihan — dia tidak bertahan di sana, dan dia jauh dari tempat
+    // asalnya. Mid adalah tier terdekat yang masih menyambung keduanya.
+    // Linalool (family Citrus, jadi hint "top") adalah kasus yang memunculkan
+    // ini.
+    if (hint === "mid" || hint === "top") return "mid";
+    return "base";
   }
+
   return "mid";
 }
 

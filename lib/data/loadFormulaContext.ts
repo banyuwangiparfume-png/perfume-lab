@@ -15,6 +15,14 @@ import { mergeSettings } from "../settings";
 import { getDb } from "../supabase/db";
 import type { FormulaRow, FormulaVersionRow } from "../supabase/database.types";
 
+/**
+ * "all" dipakai formula tanpa piramida, bukan sebagai kebiasaan satu bahan —
+ * jadi untuk tier hint dia sama artinya dengan tidak ada.
+ */
+const tierOrNull = (t: Tier | null | undefined): Tier | null =>
+  t && t !== "all" ? t : null;
+
+
 type Db = ReturnType<typeof getDb>;
 
 const num = (v: unknown, fallback = 0): number => {
@@ -120,7 +128,9 @@ type MaterialRowWithRelations = {
   supplier_dilution_pct: number;
   supplier_solvent_id: string | null;
   function_category: string | null;
+  function_category_override: string | null;
   note_tier_hint: Tier | null;
+  note_tier_hint_override: Tier | null;
   is_bridge_candidate: boolean;
   is_solvent: boolean;
   facets: { facet_key: string; weight: number }[] | null;
@@ -147,8 +157,11 @@ function toMaterial(
     facets: Object.fromEntries(
       (row.facets ?? []).map((f) => [f.facet_key, num(f.weight)]),
     ),
-    functionCategory: row.function_category,
-    noteTierHint: row.note_tier_hint,
+    // Koreksi user menang atas data supplier, sama seperti odor_impact.
+    functionCategory: row.function_category_override ?? row.function_category,
+    noteTierHint: tierOrNull(
+      row.note_tier_hint_override ?? row.note_tier_hint,
+    ),
     isBridgeCandidate: row.is_bridge_candidate,
     isSolvent: row.is_solvent,
     prices,
@@ -156,7 +169,7 @@ function toMaterial(
 }
 
 const MATERIAL_SELECT =
-  "id, name, category, odor_impact, odor_impact_override, impact_basis, supplier_dilution_pct, supplier_solvent_id, function_category, note_tier_hint, is_bridge_candidate, is_solvent, facets:raw_material_facets(facet_key, weight)";
+  "id, name, category, odor_impact, odor_impact_override, impact_basis, supplier_dilution_pct, supplier_solvent_id, function_category, function_category_override, note_tier_hint, note_tier_hint_override, is_bridge_candidate, is_solvent, facets:raw_material_facets(facet_key, weight)";
 
 /** Harga terbaru per tier, dari view rm_current_prices. */
 async function fetchPrices(

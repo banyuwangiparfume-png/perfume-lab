@@ -820,6 +820,10 @@ export type Database = {
           function_category:
             | Database["public"]["Enums"]["function_category"]
             | null
+          function_category_note: string | null
+          function_category_override:
+            | Database["public"]["Enums"]["function_category"]
+            | null
           id: string
           ifra_cat4_limit_pct: number | null
           impact_basis: Database["public"]["Enums"]["impact_basis"]
@@ -830,6 +834,9 @@ export type Database = {
           name: string
           name_normalized: string
           note_tier_hint: Database["public"]["Enums"]["tier_key"] | null
+          note_tier_hint_override:
+            | Database["public"]["Enums"]["tier_key"]
+            | null
           odor_impact: number | null
           odor_impact_note: string | null
           odor_impact_override: number | null
@@ -855,6 +862,10 @@ export type Database = {
           function_category?:
             | Database["public"]["Enums"]["function_category"]
             | null
+          function_category_note?: string | null
+          function_category_override?:
+            | Database["public"]["Enums"]["function_category"]
+            | null
           id?: string
           ifra_cat4_limit_pct?: number | null
           impact_basis?: Database["public"]["Enums"]["impact_basis"]
@@ -865,6 +876,9 @@ export type Database = {
           name: string
           name_normalized?: string
           note_tier_hint?: Database["public"]["Enums"]["tier_key"] | null
+          note_tier_hint_override?:
+            | Database["public"]["Enums"]["tier_key"]
+            | null
           odor_impact?: number | null
           odor_impact_note?: string | null
           odor_impact_override?: number | null
@@ -890,6 +904,10 @@ export type Database = {
           function_category?:
             | Database["public"]["Enums"]["function_category"]
             | null
+          function_category_note?: string | null
+          function_category_override?:
+            | Database["public"]["Enums"]["function_category"]
+            | null
           id?: string
           ifra_cat4_limit_pct?: number | null
           impact_basis?: Database["public"]["Enums"]["impact_basis"]
@@ -900,6 +918,9 @@ export type Database = {
           name?: string
           name_normalized?: string
           note_tier_hint?: Database["public"]["Enums"]["tier_key"] | null
+          note_tier_hint_override?:
+            | Database["public"]["Enums"]["tier_key"]
+            | null
           odor_impact?: number | null
           odor_impact_note?: string | null
           odor_impact_override?: number | null

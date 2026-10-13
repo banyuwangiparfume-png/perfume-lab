@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ExternalLink } from "lucide-react";
 import { ImpactOverrideForm } from "@/components/materials/ImpactOverrideForm";
+import { RoleOverrideForm } from "@/components/materials/RoleOverrideForm";
 import { ImpactBadge } from "@/components/shared/ImpactBadge";
 import { Card, CardTitle, PageHeader } from "@/components/shared/primitives";
 import { fmtGram, fmtIdr, fmtNum } from "@/lib/calc/format";
@@ -110,6 +111,20 @@ export default async function MaterialDetailPage({
                 </p>
               </div>
             )}
+          </Card>
+
+          <Card>
+            <CardTitle hint="Kategori fungsi dan tier hint datang dari pricelist supplier. Kalau tidak cocok dengan cara kamu memakainya, koreksinya disimpan terpisah dan tidak akan tertimpa import berikutnya.">
+              Koreksi peran bahan
+            </CardTitle>
+            <RoleOverrideForm
+              materialId={material.id}
+              supplierCategory={material.function_category}
+              categoryOverride={material.function_category_override}
+              supplierTier={material.note_tier_hint}
+              tierOverride={material.note_tier_hint_override}
+              note={material.function_category_note}
+            />
           </Card>
 
           <Card>

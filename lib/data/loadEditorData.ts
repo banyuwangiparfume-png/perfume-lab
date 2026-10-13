@@ -1,6 +1,6 @@
 import "server-only";
 
-import type { BridgeRule, Material, Settings } from "../calc/types";
+import type { BridgeRule, Material, Settings, Tier } from "../calc/types";
 import { getOwnerId } from "../owner";
 import { mergeSettings } from "../settings";
 import { getDb } from "../supabase/db";
@@ -8,6 +8,14 @@ import type { FacetRow } from "../supabase/database.types";
 import { loadFormulaContext } from "./loadFormulaContext";
 import { fetchAllPages } from "./paginate";
 import { listAccordsForPicker, type AccordOption } from "./versions";
+
+/**
+ * "all" dipakai formula tanpa piramida, bukan sebagai kebiasaan satu bahan —
+ * jadi untuk tier hint dia sama artinya dengan tidak ada.
+ */
+const tierOrNull = (t: Tier | null | undefined): Tier | null =>
+  t && t !== "all" ? t : null;
+
 
 export type EditorData = {
   materials: Material[];
@@ -46,7 +54,7 @@ export async function loadEditorData(formulaId: string): Promise<EditorData> {
         db
           .from("raw_materials")
           .select(
-            "id, name, synonym, cas_number, category, family, odour_profile, odor_impact, odor_impact_override, impact_basis, supplier_dilution_pct, supplier_solvent_id, function_category, note_tier_hint, is_bridge_candidate, is_solvent, facets:raw_material_facets(facet_key, weight)",
+            "id, name, synonym, cas_number, category, family, odour_profile, odor_impact, odor_impact_override, impact_basis, supplier_dilution_pct, supplier_solvent_id, function_category, function_category_override, note_tier_hint, note_tier_hint_override, is_bridge_candidate, is_solvent, facets:raw_material_facets(facet_key, weight)",
           )
           .or(`owner_id.is.null,owner_id.eq.${ownerId}`)
           .eq("is_active", true)
@@ -91,6 +99,8 @@ export async function loadEditorData(formulaId: string): Promise<EditorData> {
     supplier_dilution_pct: number;
     supplier_solvent_id: string | null;
     function_category: string | null;
+    function_category_override: string | null;
+    note_tier_hint_override: Tier | null;
     note_tier_hint: "top" | "mid" | "base" | "all" | null;
     is_bridge_candidate: boolean;
     is_solvent: boolean;
@@ -142,9 +152,11 @@ export async function loadEditorData(formulaId: string): Promise<EditorData> {
     facets: Object.fromEntries(
       (m.facets ?? []).map((f) => [f.facet_key, num(f.weight)]),
     ),
-    functionCategory: m.function_category,
-    noteTierHint:
-      m.note_tier_hint === "all" ? null : m.note_tier_hint,
+    // Koreksi user menang atas data supplier, sama seperti odor_impact.
+    functionCategory: m.function_category_override ?? m.function_category,
+    noteTierHint: tierOrNull(
+      m.note_tier_hint_override ?? m.note_tier_hint,
+    ),
     isBridgeCandidate: m.is_bridge_candidate,
     isSolvent: m.is_solvent,
     prices: prices.get(m.id) ?? {},

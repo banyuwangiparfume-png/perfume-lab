@@ -22,6 +22,7 @@ import {
 } from "@/lib/csv/parseMaterials";
 import { getOwnerId } from "@/lib/owner";
 import { getDb } from "@/lib/supabase/db";
+import type { FunctionCategoryEnum } from "@/lib/supabase/database.types";
 import facetKeywords from "@/seed/facet-keywords.json";
 
 /**
@@ -613,4 +614,51 @@ function mapBackIds(
       byName.get(row.name.toLowerCase());
     if (id) into.set(row._line, id);
   }
+}
+
+/**
+ * Koreksi kategori fungsi dan tier hint.
+ *
+ * Keduanya datang dari pricelist supplier dan sering tidak cocok untuk yang
+ * memakainya: Ecofragrantica menaruh Linalool di family Citrus, jadi tier
+ * hint-nya "top", padahal banyak perfumer memperlakukannya sebagai mid.
+ *
+ * Disimpan di kolom override terpisah supaya import pricelist berikutnya tidak
+ * pernah menghapusnya. Mengosongkan nilainya mengembalikan bahan itu ke data
+ * supplier — bukan mengosongkan kategorinya.
+ */
+export async function setMaterialRoleOverride(
+  id: string,
+  input: {
+    functionCategory?: FunctionCategoryEnum | null;
+    noteTierHint?: "top" | "mid" | "base" | null;
+    note?: string | null;
+  },
+): Promise<ActionResult> {
+  const patch: {
+    function_category_override?: FunctionCategoryEnum | null;
+    note_tier_hint_override?: "top" | "mid" | "base" | null;
+    function_category_note?: string | null;
+  } = {};
+
+  if ("functionCategory" in input) {
+    patch.function_category_override = input.functionCategory ?? null;
+  }
+  if ("noteTierHint" in input) {
+    patch.note_tier_hint_override = input.noteTierHint ?? null;
+  }
+  if ("note" in input) {
+    patch.function_category_note = input.note?.trim() || null;
+  }
+
+  if (!Object.keys(patch).length) return ok();
+
+  const db = getDb();
+  const { error } = await db.from("raw_materials").update(patch).eq("id", id);
+  if (error) return fail(describeDbError(error));
+
+  revalidatePath(`/materials/${id}`);
+  revalidatePath("/materials");
+  revalidatePath("/admin/materials");
+  return ok();
 }

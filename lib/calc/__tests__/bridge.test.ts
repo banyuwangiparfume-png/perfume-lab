@@ -181,6 +181,15 @@ describe("dosis awal & tier tujuan", () => {
     );
     expect(recommendTier(undefined, ["mid", "base"])).toBe("base");
   });
+
+  it("bahan ber-hint top diantar ke Mid, bukan Base", () => {
+    // Linalool: family Citrus, jadi hint-nya "top". Menaruhnya di Base adalah
+    // yang terburuk dari dua pilihan — tidak bertahan di sana, dan jauh dari
+    // tempat asalnya.
+    expect(recommendTier(mk({ noteTierHint: "top" }), ["mid", "base"])).toBe(
+      "mid",
+    );
+  });
 });
 
 describe("saran bridger membawa tier tujuannya sendiri", () => {
