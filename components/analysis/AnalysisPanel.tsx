@@ -667,7 +667,13 @@ export function AnalysisPanel({
   return (
     <div className="space-y-3">
       <Tabs value={tab} onValueChange={(v) => setTab(v as TabKey)}>
-        <TabsList className="w-full flex-wrap">
+        {/*
+          Delapan tab tidak muat satu baris di kolom analisa. TabsList bawaan
+          mengunci tingginya di h-8, jadi baris kedua jatuh ke luar kotak dan
+          menimpa isi panel. Tingginya dibuat mengikuti isi, dan tiap tab
+          berhenti saling merebut lebar supaya pembungkusnya rapi.
+        */}
+        <TabsList className="h-auto w-full flex-wrap justify-start gap-0.5 [&>button]:h-7 [&>button]:flex-none [&>button]:px-2">
           <TabsTrigger value="ringkasan">
             Ringkasan
             {alerts > 0 && (
@@ -910,10 +916,22 @@ function DiffuserTab({
         </p>
       )}
 
+      {/*
+        Kalimat terakhir ini penting: beberapa bahan yang paling dikenal sebagai
+        penguat proyeksi — Iso E Super dan Hedione — justru ditaruh supplier di
+        kategori Fixative, jadi mereka tidak akan pernah muncul di sini sampai
+        kategorinya dikoreksi. Tanpa petunjuk ini, panelnya terlihat seperti
+        melewatkan bahan yang jelas-jelas ada di master.
+      */}
       <p className="text-[11px] leading-relaxed text-[var(--text-subtle)]">
         Yang disarankan cuma bahan yang kategorinya benar-benar data supplier,
         bukan tebakan. Diffuser menaikkan jangkauan, bukan ketahanan — yang
-        menahan drydown ada di Fixative.
+        menahan drydown ada di Fixative.{" "}
+        <strong className="font-medium">
+          Kategorinya ikut pricelist supplier.
+        </strong>{" "}
+        Iso E Super dan Hedione misalnya ditaruh di Fixative, jadi tidak muncul
+        di sini sampai kategorinya dikoreksi di halaman bahan masing-masing.
       </p>
     </div>
   );
