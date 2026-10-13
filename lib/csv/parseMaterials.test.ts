@@ -111,6 +111,27 @@ describe("parseMaterialRows", () => {
     ]);
   });
 
+  it("karakter tak terlihat dibuang dari nama", () => {
+    // U+2060 (word joiner) terbawa saat teks ditempel ke Excel. Kalau tidak
+    // dibuang, "Vanillin" tidak akan pernah cocok dengan "Vanillin".
+    // Ditulis sebagai escape, bukan karakter aslinya — kalau tidak, test ini
+    // sendiri jadi tidak bisa dibaca di editor mana pun.
+    const { rows } = parseMaterialRows(
+      [row({ name: String.fromCodePoint(0x2060) + "Vanillin", synonym: "Methyl" + String.fromCodePoint(0x200b) + " Vanillin" })],
+      identityMap,
+    );
+    expect(rows[0].name).toBe("Vanillin");
+    expect(rows[0].synonym).toBe("Methyl Vanillin");
+  });
+
+  it("spasi berlebih dan baris baru dari sel Excel dirapikan", () => {
+    const { rows } = parseMaterialRows(
+      [row({ name: "  Iso E   Super" + String.fromCharCode(10) + " Pure " })],
+      identityMap,
+    );
+    expect(rows[0].name).toBe("Iso E Super Pure");
+  });
+
   it("nama ganda ditolak supaya import tetap idempoten", () => {
     // Nama produk adalah identitasnya, jadi di sinilah duplikat sungguhan
     // tertangkap — termasuk saat keduanya punya CAS.

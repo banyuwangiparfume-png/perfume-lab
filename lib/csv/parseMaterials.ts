@@ -138,9 +138,37 @@ export type ParseResult = {
   failures: ParseFailure[];
 };
 
+/**
+ * Karakter tak terlihat yang ikut terbawa saat teks ditempel ke Excel:
+ * zero-width space, word joiner, penanda arah teks, dan BOM.
+ *
+ * Harus dibuang, bukan dibiarkan. Di pricelist 2026 ada 20 nama yang diawali
+ * U+2060 — mata melihat "Vanillin", mesin melihat string yang berbeda, dan
+ * pencocokan apa pun lewat nama diam-diam meleset.
+ */
+// Ditulis sebagai angka, bukan escape di dalam literal regex: karakternya
+// sendiri tidak terlihat di editor, dan U+2028 memotong literal apa pun yang
+// memuatnya.
+const INVISIBLE_RANGES: [number, number][] = [
+  [0x200b, 0x200f], // zero-width space .. right-to-left mark
+  [0x2028, 0x2029], // line separator, paragraph separator
+  [0x202a, 0x202e], // penanda arah teks
+  [0x2060, 0x2064], // word joiner .. invisible plus
+  [0xfeff, 0xfeff], // BOM / zero-width no-break space
+];
+
+const stripInvisible = (s: string) =>
+  [...s]
+    .filter((ch) => {
+      const c = ch.codePointAt(0)!;
+      return !INVISIBLE_RANGES.some(([lo, hi]) => c >= lo && c <= hi);
+    })
+    .join("");
+
 const text = (v: unknown): string | null => {
   if (v == null) return null;
-  const s = String(v).trim();
+  // Spasi ganda dan baris baru dari sel Excel ikut dirapikan sekalian.
+  const s = stripInvisible(String(v)).replace(/\s+/g, " ").trim();
   if (!s) return null;
   // Pricelist sering memakai penanda data kosong seperti ini.
   if (["-", "n/a", "na", "null", "tbd"].includes(s.toLowerCase())) return null;
