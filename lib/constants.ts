@@ -47,23 +47,56 @@ export const FO_FAMILIES = [
   "Tobacco",
 ] as const;
 
+/**
+ * Label dan penjelasan tiap status versi.
+ *
+ * Ditulis sebagai objek yang diketik penuh, BUKAN array yang lalu diubah jadi
+ * record dengan `as`. Bentuk lama menyembunyikan status yang terlewat: enum
+ * database punya lima nilai, daftarnya cuma memuat empat, dan `as` membuat
+ * TypeScript percaya semuanya lengkap. Akibatnya dashboard melempar
+ * "Cannot read properties of undefined" begitu versi pertama disimpan —
+ * kesalahan yang baru muncul setelah aplikasinya dipakai, bukan saat dibangun.
+ *
+ * Dengan bentuk ini, status baru di database akan menolak dikompilasi sampai
+ * labelnya ditulis.
+ */
+export const VERSION_STATUS_META: Record<
+  VersionStatusEnum,
+  { label: string; hint: string }
+> = {
+  draft: { label: "Draft", hint: "Masih disusun, belum diracik." },
+  saved: {
+    label: "Tersimpan",
+    hint: "Versi dibekukan. Dia yang dirujuk catatan penciuman, lembar timbang, dan formula lain.",
+  },
+  mixed: { label: "Sudah dicampur", hint: "Sudah diracik, menunggu dinilai." },
+  evaluated: {
+    label: "Sudah dinilai",
+    hint: "Sudah ada catatan penciuman. Barisnya tidak bisa diubah lagi.",
+  },
+  locked: {
+    label: "Dikunci",
+    hint: "Dibekukan sengaja. Duplikat kalau mau diubah.",
+  },
+};
+
 export const VERSION_STATUSES: {
   value: VersionStatusEnum;
   label: string;
   hint: string;
-}[] = [
-  { value: "draft", label: "Draft", hint: "Masih disusun, belum diracik." },
-  { value: "mixed", label: "Sudah dicampur", hint: "Sudah diracik, menunggu dinilai." },
-  { value: "evaluated", label: "Sudah dinilai", hint: "Sudah ada catatan penciuman. Barisnya tidak bisa diubah lagi." },
-  { value: "locked", label: "Dikunci", hint: "Dibekukan sengaja. Duplikat kalau mau diubah." },
-];
-
+}[] = (
+  Object.entries(VERSION_STATUS_META) as [
+    VersionStatusEnum,
+    { label: string; hint: string },
+  ][]
+).map(([value, meta]) => ({ value, ...meta }));
 
 /** Label status versi. Ditaruh di sini, bukan di lib/data/, supaya client
  *  component bisa memakainya tanpa menarik koneksi database ke bundle. */
-export const STATUS_LABELS: Record<VersionStatusEnum, string> = Object.fromEntries(
-  VERSION_STATUSES.map((s) => [s.value, s.label]),
-) as Record<VersionStatusEnum, string>;
+export const STATUS_LABELS: Record<VersionStatusEnum, string> =
+  Object.fromEntries(
+    Object.entries(VERSION_STATUS_META).map(([k, v]) => [k, v.label]),
+  ) as Record<VersionStatusEnum, string>;
 
 export const FUNCTION_CATEGORIES: {
   value: FunctionCategoryEnum;
