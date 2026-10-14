@@ -12,6 +12,7 @@ import { Cell, Pie, PieChart, ResponsiveContainer } from "recharts";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { Analysis } from "@/lib/calc/analyze";
+import type { RoleReport } from "@/lib/calc/roles";
 import type { BridgeStatus, BridgeSuggestion } from "@/lib/calc/bridge";
 import { FUNCTION_HINTS, SPL_NOTE, UNKNOWN_KEY } from "@/lib/calc/functions";
 import { fmtGram, fmtIdr, fmtNum, fmtPct } from "@/lib/calc/format";
@@ -842,10 +843,19 @@ export function AnalysisPanel({
         <BridgeTab analysis={analysis} onAdd={onAddBridge} />
       )}
       {tab === "diffuser" && (
-        <RoleTab report={analysis.diffusers} onAdd={onAddBridge} />
+        <RoleTab
+          reports={analysis.diffusers}
+          pyramid={context.version.pyramid != null}
+          onAdd={onAddBridge}
+        />
       )}
       {tab === "fixative" && (
-        <RoleTab report={analysis.fixatives} onAdd={onAddBridge} />
+        // Fixative selalu ke Base, jadi memilih tier sasaran tidak bermakna.
+        <RoleTab
+          reports={{ all: analysis.fixatives }}
+          pyramid={false}
+          onAdd={onAddBridge}
+        />
       )}
 
       <p className="border-t border-[var(--border)] pt-2 text-[11px] leading-relaxed text-[var(--text-subtle)]">
@@ -993,17 +1003,44 @@ const ROLE_COPY = {
 } as const;
 
 function RoleTab({
-  report,
+  reports,
+  pyramid,
   onAdd,
 }: {
-  report: Analysis["diffusers"];
+  /** `all` wajib; tier diisi analyze() hanya saat mode piramida aktif */
+  reports: Partial<Record<Tier, RoleReport>> & { all: RoleReport };
+  /** tampilkan pemilih sasaran per tier */
+  pyramid: boolean;
   onAdd?: (materialId: string, tier: Tier, dose: number) => void;
 }) {
+  const [scope, setScope] = useState<Tier>("all");
+  const report = reports[scope] ?? reports.all;
   const { role, sharePct, present, suggestions } = report;
   const copy = ROLE_COPY[role];
 
   return (
     <div className="space-y-3">
+      {/*
+        Diffuser tidak netral: Ambroxan mengangkat kayu, Hedione mengangkat
+        floral. Jadi pertanyaannya "mau ngangkat apa", bukan "biar nyebar" —
+        dan pilihan ini yang menjawabnya.
+      */}
+      {pyramid && (
+        <div className="space-y-1">
+          <p className="text-[11px] text-[var(--text-subtle)]">Mau ngangkat</p>
+          <Tabs value={scope} onValueChange={(v) => setScope(v as Tier)}>
+            <TabsList className="w-full">
+              <TabsTrigger value="all">Semua</TabsTrigger>
+              {PYRAMID_TIERS.map((t) => (
+                <TabsTrigger key={t} value={t}>
+                  {TIER_META[t].label}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </Tabs>
+        </div>
+      )}
+
       <div className="rounded-lg border border-[var(--border)] p-3">
         <div className="flex items-baseline gap-2">
           <span className="text-[13px] font-medium">{copy.title}</span>
@@ -1023,14 +1060,51 @@ function RoleTab({
               key={s.materialId}
               className="flex items-start gap-2 rounded border border-[var(--border)] px-2 py-1.5"
             >
-              <div className="min-w-0 flex-1">
+              <div className="min-w-0 flex-1 space-y-0.5">
                 <p className="text-[13px] font-medium">
                   {s.name}
                   {s.inStock && <span className="ml-1 text-[var(--warn)]">★</span>}
                 </p>
-                <p className="text-[11px] text-[var(--text-subtle)]">
-                  {s.reason}
+
+                {/*
+                  Angka sebelum → sesudah cuma sumbangan bau bahan ini sendiri.
+                  Sinergi tidak punya data terukur, jadi tidak dikarang — dan
+                  itu disebut di catatan bawah, bukan disembunyikan.
+                */}
+                {s.preview ? (
+                  <p className="text-[11px] leading-relaxed text-[var(--text-muted)]">
+                    di {fmtPct(s.starterDose)}:{" "}
+                    <span
+                      className="font-medium"
+                      style={{
+                        color: `color-mix(in oklab, ${facetColor(s.preview.facet)} 78%, var(--text))`,
+                      }}
+                    >
+                      {facetLabel(s.preview.facet)}
+                    </span>{" "}
+                    <span className="numeric">
+                      {fmtPct(s.preview.beforePct)} → {fmtPct(s.preview.afterPct)}
+                    </span>
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-[var(--text-subtle)]">
+                    {s.reason}
+                  </p>
+                )}
+
+                <p className="text-[11px] leading-relaxed text-[var(--text-subtle)]">
+                  {s.lifts.length > 0
+                    ? `searah dengan ${s.lifts.map((l) => l.name).join(" · ")}`
+                    : "tidak searah kuat dengan satu bahan pun — mengangkat arah keseluruhannya"}
                 </p>
+
+                {scope !== "all" && s.tier !== scope && (
+                  <p className="text-[11px] leading-relaxed text-[var(--text-subtle)]">
+                    Tetap masuk {TIER_META[s.tier].label} — itu kecepatan
+                    menguapnya, dan memindahkannya tidak membuatnya menguap
+                    bareng {TIER_META[scope].label}.
+                  </p>
+                )}
               </div>
               {onAdd && (
                 <Button
@@ -1065,6 +1139,15 @@ function RoleTab({
         — koreksi di halaman detail bahan kalau menurutmu sebuah bahan berperan
         lain.
       </p>
+
+      {suggestions.some((s) => s.preview) && (
+        <p className="text-[11px] leading-relaxed text-[var(--text-subtle)]">
+          Angka sebelum → sesudah adalah porsi facet itu di seluruh formula,
+          dari bau bahannya sendiri. Sinergi — dua bahan barengan terasa lebih
+          hidup dari jumlahnya — nyata tapi tidak punya data terukur, jadi
+          hidungmu yang menilai sisanya.
+        </p>
+      )}
     </div>
   );
 }

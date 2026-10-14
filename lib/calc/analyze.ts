@@ -28,8 +28,12 @@ export type Analysis = {
   strength: StrengthResult;
   /** komposisi peran bahan: diffuser / modifier / bridger / fixative */
   functions: FunctionMix;
-  /** saran penguat proyeksi, berdasar arah aroma formula keseluruhan */
-  diffusers: RoleReport;
+  /**
+   * Saran penguat proyeksi, per sasaran: `all` searah formula keseluruhan,
+   * `top`/`mid`/`base` searah tier itu saja. Tier diisi hanya kalau mode
+   * piramida aktif — bentuknya sama dengan `aroma`.
+   */
+  diffusers: Record<Tier, RoleReport>;
   /** saran penahan drydown, dengan kriteria yang sama */
   fixatives: RoleReport;
   realPyramid: RealPyramidRow[];
@@ -49,6 +53,8 @@ export type AnalyzeOptions = {
   /** bridge engine paling mahal; editor bisa mematikannya saat mengetik */
   skipBridges?: boolean;
 };
+
+const PYRAMID_SCOPES: Tier[] = ["top", "mid", "base"];
 
 const emptyPie = (): AromaPie => ({
   slices: [],
@@ -127,12 +133,14 @@ export function analyze(
           }),
         };
 
-  // Porsi diffuser murah dihitung dan selalu berguna; yang mahal cuma
-  // pencarian sarannya, jadi hanya itu yang ikut dimatikan saat mengetik.
   // Porsinya murah dihitung dan selalu berguna; yang mahal cuma pencarian
   // sarannya, jadi hanya itu yang ikut dimatikan saat mengetik.
-  const quickRole = (role: "diffuser" | "fixative"): RoleReport => ({
+  const quickRole = (
+    role: "diffuser" | "fixative",
+    scope: Tier = "all",
+  ): RoleReport => ({
     role,
+    scope,
     sharePct: shareOf(functions, role),
     present: [],
     suggestions: [],
@@ -140,12 +148,24 @@ export function analyze(
 
   const skipRoles = opts.skipBridges || expandError;
 
-  const diffusers = skipRoles
-    ? quickRole("diffuser")
-    : roleReport(ctx, items, functions, "diffuser", {
-        onlyStock: opts.onlyStockBridges,
-        totalScore: strength.totalScore,
-      });
+  const diffuserFor = (scope: Tier) =>
+    skipRoles
+      ? quickRole("diffuser", scope)
+      : roleReport(ctx, items, functions, "diffuser", {
+          onlyStock: opts.onlyStockBridges,
+          totalScore: strength.totalScore,
+          scope,
+        });
+
+  const diffusers: Record<Tier, RoleReport> = {
+    all: diffuserFor("all"),
+    top: quickRole("diffuser", "top"),
+    mid: quickRole("diffuser", "mid"),
+    base: quickRole("diffuser", "base"),
+  };
+  if (ctx.version.pyramid) {
+    for (const t of PYRAMID_SCOPES) diffusers[t] = diffuserFor(t);
+  }
 
   const fixatives = skipRoles
     ? quickRole("fixative")
