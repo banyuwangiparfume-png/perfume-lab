@@ -26,6 +26,7 @@ type TabKey =
   | "kekuatan"
   | "fungsi"
   | "diffuser"
+  | "fixative"
   | "pelarut"
   | "hpp"
   | "bridger";
@@ -128,9 +129,21 @@ function AromaTab({ analysis }: { analysis: Analysis }) {
   const [scope, setScope] = useState<"all" | Tier>("all");
   const pie = analysis.aroma[scope as Tier] ?? analysis.aroma.all;
   const slices = [
-    ...pie.slices.map((s) => ({ key: s.facet, name: s.facet, value: s.pct })),
+    ...pie.slices.map((s) => ({
+      key: s.facet,
+      name: s.facet,
+      value: s.pct,
+      contributors: s.contributors,
+    })),
     ...(pie.other > 0.05
-      ? [{ key: "__other", name: "Lainnya", value: pie.other }]
+      ? [
+          {
+            key: "__other",
+            name: "Lainnya",
+            value: pie.other,
+            contributors: [],
+          },
+        ]
       : []),
   ];
 
@@ -197,19 +210,40 @@ function AromaTab({ analysis }: { analysis: Analysis }) {
         )}
       </div>
 
-      <ul className="space-y-1 text-[13px]">
+{/*
+        Tiap irisan menyebut penyumbangnya. Tanpa itu pie cuma menjawab "apa"
+        dan bukan "dari siapa" — dan saat angkanya terlalu tinggi, user harus
+        menyisir seluruh formula sendiri untuk menebak baris mana yang perlu
+        diturunkan. Daftarnya sudah ikut dihitung sejak awal.
+      */}
+      <ul className="space-y-1.5 text-[13px]">
         {slices.map((s) => (
-          <li key={s.key} className="flex items-center gap-2">
-            <span
-              aria-hidden
-              className="size-2.5 shrink-0 rounded-sm"
-              style={{
-                backgroundColor:
-                  s.key === "__other" ? "var(--facet-other)" : facetColor(s.key),
-              }}
-            />
-            <span className="flex-1 capitalize">{s.name}</span>
-            <span className="numeric font-medium">{fmtPct(s.value)}</span>
+          <li key={s.key}>
+            <div className="flex items-center gap-2">
+              <span
+                aria-hidden
+                className="size-2.5 shrink-0 rounded-sm"
+                style={{
+                  backgroundColor:
+                    s.key === "__other"
+                      ? "var(--facet-other)"
+                      : facetColor(s.key),
+                }}
+              />
+              <span className="flex-1 capitalize">{s.name}</span>
+              <span className="numeric font-medium">{fmtPct(s.value)}</span>
+            </div>
+
+            {s.contributors.length > 0 && (
+              <p className="ml-4.5 text-[11px] leading-relaxed text-[var(--text-subtle)]">
+                {s.contributors
+                  .slice(0, 4)
+                  .map((c) => `${c.name} ${fmtPct(c.pct)}`)
+                  .join(" · ")}
+                {s.contributors.length > 4 &&
+                  ` · +${s.contributors.length - 4} lagi`}
+              </p>
+            )}
           </li>
         ))}
       </ul>
@@ -721,6 +755,7 @@ export function AnalysisPanel({
           <TabsTrigger value="hpp">HPP</TabsTrigger>
           <TabsTrigger value="bridger">Bridger</TabsTrigger>
           <TabsTrigger value="diffuser">Diffuser</TabsTrigger>
+          <TabsTrigger value="fixative">Fixative</TabsTrigger>
         </TabsList>
       </Tabs>
 
@@ -758,7 +793,10 @@ export function AnalysisPanel({
         <BridgeTab analysis={analysis} onAdd={onAddBridge} />
       )}
       {tab === "diffuser" && (
-        <DiffuserTab analysis={analysis} onAdd={onAddBridge} />
+        <RoleTab report={analysis.diffusers} onAdd={onAddBridge} />
+      )}
+      {tab === "fixative" && (
+        <RoleTab report={analysis.fixatives} onAdd={onAddBridge} />
       )}
 
       <p className="border-t border-[var(--border)] pt-2 text-[11px] leading-relaxed text-[var(--text-subtle)]">
@@ -878,37 +916,54 @@ function FunctionTab({ analysis }: { analysis: Analysis }) {
 }
 
 /**
- * Penguat proyeksi.
+ * Saran bahan untuk satu peran: Diffuser atau Fixative.
  *
- * Panelnya sengaja dipisah dari Bridger walau tampilannya mirip, karena
- * pertanyaannya berbeda. Bridger mencari bahan yang duduk di ANTARA dua sisi
- * yang tidak nyambung. Diffuser mencari yang searah dengan formula secara
- * keseluruhan — tugasnya membawa yang sudah ada keluar lebih jauh, bukan
- * menambah watak baru. Menggabungkan keduanya dalam satu daftar membuat dua
- * nasihat yang beda tujuan terlihat setara.
+ * Panelnya dipisah dari Bridger walau tampilannya mirip, karena pertanyaannya
+ * berbeda. Bridger mencari bahan yang duduk di ANTARA dua sisi yang tidak
+ * nyambung. Dua panel ini mencari yang searah dengan formula secara keseluruhan
+ * — yang satu membawanya keluar lebih jauh, yang satu menahannya lebih lama.
+ *
+ * Satu komponen untuk keduanya: isinya identik kecuali kalimatnya, dan dua
+ * salinan yang mirip pasti menyimpang pelan-pelan.
  */
-function DiffuserTab({
-  analysis,
+const ROLE_COPY = {
+  diffuser: {
+    title: "Porsi diffuser",
+    empty:
+      "Belum ada bahan berperan diffuser. Formulanya bisa terdengar dekat di kulit walau bahannya kuat.",
+    footer:
+      "Diffuser menaikkan jangkauan, bukan ketahanan — yang menahan drydown ada di Fixative.",
+  },
+  fixative: {
+    title: "Porsi fixative",
+    empty:
+      "Belum ada bahan berperan fixative. Tidak ada yang menahan bahan ringan, jadi drydown-nya akan sependek bahan paling cepat menguap.",
+    footer:
+      "Fixative memperpanjang drydown, bukan jangkauan — yang membawa keluar ada di Diffuser. Sarannya diarahkan ke Base, karena yang menahan harus berada di lapisan paling lambat menguap.",
+  },
+} as const;
+
+function RoleTab({
+  report,
   onAdd,
 }: {
-  analysis: Analysis;
+  report: Analysis["diffusers"];
   onAdd?: (materialId: string, tier: Tier, dose: number) => void;
 }) {
-  const { sharePct, present, suggestions } = analysis.diffusers;
+  const { role, sharePct, present, suggestions } = report;
+  const copy = ROLE_COPY[role];
 
   return (
     <div className="space-y-3">
       <div className="rounded-lg border border-[var(--border)] p-3">
         <div className="flex items-baseline gap-2">
-          <span className="text-[13px] font-medium">Porsi diffuser</span>
+          <span className="text-[13px] font-medium">{copy.title}</span>
           <span className="numeric ml-auto text-[15px] font-semibold">
             {fmtPct(sharePct)}
           </span>
         </div>
         <p className="mt-1 text-[12px] leading-relaxed text-[var(--text-subtle)]">
-          {present.length
-            ? `Dari ${present.join(" · ")}.`
-            : "Belum ada bahan berperan diffuser. Formulanya bisa terdengar dekat di kulit walau bahannya kuat."}
+          {present.length ? `Dari ${present.join(" · ")}.` : copy.empty}
         </p>
       </div>
 
@@ -944,26 +999,22 @@ function DiffuserTab({
       ) : (
         <p className="text-[13px] text-[var(--text-muted)]">
           Belum ada saran. Isi dulu formulanya dengan bahan yang punya data
-          facet — saran diffuser dicari dari arah aroma yang sudah terbentuk.
+          facet — sarannya dicari dari arah aroma yang sudah terbentuk.
         </p>
       )}
 
-      {/*
-        Kalimat terakhir ini penting: beberapa bahan yang paling dikenal sebagai
-        penguat proyeksi — Iso E Super dan Hedione — justru ditaruh supplier di
-        kategori Fixative, jadi mereka tidak akan pernah muncul di sini sampai
-        kategorinya dikoreksi. Tanpa petunjuk ini, panelnya terlihat seperti
-        melewatkan bahan yang jelas-jelas ada di master.
-      */}
+      {/* Beberapa bahan yang paling dikenal untuk peran ini justru ditaruh
+          supplier di kategori lain, jadi mereka tidak akan muncul sampai
+          kategorinya dikoreksi. Tanpa catatan ini panelnya terlihat seperti
+          melewatkan bahan yang jelas-jelas ada di master. */}
       <p className="text-[11px] leading-relaxed text-[var(--text-subtle)]">
         Yang disarankan cuma bahan yang kategorinya benar-benar data supplier,
-        bukan tebakan. Diffuser menaikkan jangkauan, bukan ketahanan — yang
-        menahan drydown ada di Fixative.{" "}
+        bukan tebakan. {copy.footer}{" "}
         <strong className="font-medium">
-          Kategorinya ikut pricelist supplier.
+          Kategorinya ikut pricelist supplier
         </strong>{" "}
-        Iso E Super dan Hedione misalnya ditaruh di Fixative, jadi tidak muncul
-        di sini sampai kategorinya dikoreksi di halaman bahan masing-masing.
+        — koreksi di halaman detail bahan kalau menurutmu sebuah bahan berperan
+        lain.
       </p>
     </div>
   );

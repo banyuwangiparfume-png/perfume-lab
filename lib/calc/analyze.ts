@@ -7,7 +7,7 @@ import {
 } from "./bridge";
 import { costBreakdown, type CostBreakdown } from "./cost";
 import { expand, ExpandError, mergeByMaterial, type MergedItem } from "./expand";
-import { diffuserReport, type DiffuserReport } from "./diffuser";
+import { roleReport, type RoleReport } from "./roles";
 import { functionMix, shareOf, type FunctionMix } from "./functions";
 import { lineTable, type LineTable } from "./lines";
 import { runRules, type Warning } from "./rules";
@@ -29,7 +29,9 @@ export type Analysis = {
   /** komposisi peran bahan: diffuser / modifier / bridger / fixative */
   functions: FunctionMix;
   /** saran penguat proyeksi, berdasar arah aroma formula keseluruhan */
-  diffusers: DiffuserReport;
+  diffusers: RoleReport;
+  /** saran penahan drydown, dengan kriteria yang sama */
+  fixatives: RoleReport;
   realPyramid: RealPyramidRow[];
   aroma: Record<Tier, AromaPie>;
   solvents: SolventReport;
@@ -127,13 +129,30 @@ export function analyze(
 
   // Porsi diffuser murah dihitung dan selalu berguna; yang mahal cuma
   // pencarian sarannya, jadi hanya itu yang ikut dimatikan saat mengetik.
-  const diffusers =
-    opts.skipBridges || expandError
-      ? { sharePct: shareOf(functions, "diffuser"), present: [], suggestions: [] }
-      : diffuserReport(ctx, items, functions, {
-          onlyStock: opts.onlyStockBridges,
-          totalScore: strength.totalScore,
-        });
+  // Porsinya murah dihitung dan selalu berguna; yang mahal cuma pencarian
+  // sarannya, jadi hanya itu yang ikut dimatikan saat mengetik.
+  const quickRole = (role: "diffuser" | "fixative"): RoleReport => ({
+    role,
+    sharePct: shareOf(functions, role),
+    present: [],
+    suggestions: [],
+  });
+
+  const skipRoles = opts.skipBridges || expandError;
+
+  const diffusers = skipRoles
+    ? quickRole("diffuser")
+    : roleReport(ctx, items, functions, "diffuser", {
+        onlyStock: opts.onlyStockBridges,
+        totalScore: strength.totalScore,
+      });
+
+  const fixatives = skipRoles
+    ? quickRole("fixative")
+    : roleReport(ctx, items, functions, "fixative", {
+        onlyStock: opts.onlyStockBridges,
+        totalScore: strength.totalScore,
+      });
 
   return {
     items,
@@ -142,6 +161,7 @@ export function analyze(
     strength,
     functions,
     diffusers,
+    fixatives,
     realPyramid: pyramid,
     aroma,
     solvents,

@@ -10,7 +10,7 @@ import type {
   Tier,
 } from "./types";
 
-export type DiffuserSuggestion = {
+export type RoleSuggestion = {
   materialId: string;
   name: string;
   score: number;
@@ -21,13 +21,17 @@ export type DiffuserSuggestion = {
   tier: Tier;
 };
 
-export type DiffuserReport = {
-  /** porsi diffuser dari bahan pewangi sekarang */
+export type RoleReport = {
+  role: "diffuser" | "fixative";
+  /** porsi peran ini dari bahan pewangi sekarang */
   sharePct: number;
-  /** bahan berperan diffuser yang sudah ada di formula */
+  /** bahan berperan ini yang sudah ada di formula */
   present: string[];
-  suggestions: DiffuserSuggestion[];
+  suggestions: RoleSuggestion[];
 };
+
+/** Nama lama, dipertahankan supaya pemanggil yang sudah ada tidak putus. */
+export type DiffuserReport = RoleReport;
 
 /**
  * Arah aroma formula secara keseluruhan, dibobot kekuatan.
@@ -68,6 +72,12 @@ const strongestShared = (a: FacetVector, b: FacetVector): string | null => {
 };
 
 /**
+ * Saran bahan untuk satu PERAN: diffuser atau fixative.
+ *
+ * Satu fungsi untuk keduanya, bukan dua modul yang mirip. Kriterianya memang
+ * sama — cari bahan berperan itu yang searah dengan formula — dan dua salinan
+ * yang nyaris identik pasti menyimpang pelan-pelan tanpa ada yang sadar.
+ *
  * Saran diffuser: bahan yang menaikkan proyeksi tanpa mengubah wataknya.
  *
  * Pertanyaannya BERBEDA dari bridger. Bridger mencari bahan yang duduk di
@@ -81,12 +91,13 @@ const strongestShared = (a: FacetVector, b: FacetVector): string | null => {
  * tebakan dari family tidak dipakai di sini: menyarankan dosis berdasarkan
  * tebakan sendiri menumpuk ketidakpastian di atas ketidakpastian.
  */
-export function diffuserReport(
+export function roleReport(
   ctx: FormulaContext,
   items: ExpandedItem[],
   mix: FunctionMix,
+  role: "diffuser" | "fixative",
   opts: { onlyStock?: boolean; limit?: number; totalScore?: number } = {},
-): DiffuserReport {
+): RoleReport {
   const { onlyStock = false, limit = 5 } = opts;
 
   const used = new Set(
@@ -97,17 +108,17 @@ export function diffuserReport(
     .map((id) => ctx.materials.get(id))
     .filter(
       (m): m is Material =>
-        !!m && (m.functionCategory ?? "").toLowerCase() === "diffuser",
+        !!m && (m.functionCategory ?? "").toLowerCase() === role,
     )
     .map((m) => m.name)
     .sort((a, b) => a.localeCompare(b, "id"));
 
   const target = formulaVector(items, ctx.materials);
-  const suggestions: DiffuserSuggestion[] = [];
+  const suggestions: RoleSuggestion[] = [];
 
   if (Object.keys(target).length) {
     for (const material of ctx.materials.values()) {
-      if ((material.functionCategory ?? "").toLowerCase() !== "diffuser") continue;
+      if ((material.functionCategory ?? "").toLowerCase() !== role) continue;
       if (material.functionSource === "derived") continue;
       if (used.has(material.id)) continue;
       if (onlyStock && !ctx.stock.has(material.id)) continue;
@@ -122,14 +133,20 @@ export function diffuserReport(
         materialId: material.id,
         name: material.name,
         score,
-        reason: `menguatkan sisi ${strongestShared(material.facets, target) ?? "—"} yang sudah ada`,
+        reason:
+          role === "diffuser"
+            ? `menguatkan sisi ${strongestShared(material.facets, target) ?? "—"} yang sudah ada`
+            : `menahan dari sisi ${strongestShared(material.facets, target) ?? "—"}, searah dengan formulanya`,
         impact: material.impact,
         inStock: ctx.stock.has(material.id),
         starterDose: starterDose(material, {
           totalScore: opts.totalScore,
           settings: ctx.settings,
         }),
-        tier: material.noteTierHint ?? "mid",
+        // Fixative tempatnya di Base: yang menahan harus berada di lapisan
+        // yang paling lambat menguap, berapa pun kebiasaan bahannya.
+        tier:
+          role === "fixative" ? "base" : (material.noteTierHint ?? "mid"),
       });
     }
   }
@@ -137,7 +154,8 @@ export function diffuserReport(
   suggestions.sort((a, b) => b.score - a.score);
 
   return {
-    sharePct: shareOf(mix, "diffuser"),
+    role,
+    sharePct: shareOf(mix, role),
     present,
     suggestions: suggestions.slice(0, limit),
   };
