@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ClipboardList, Pencil, Scale } from "lucide-react";
+import { ClipboardList, Factory, Pencil, Scale } from "lucide-react";
 import { AnalysisPanel } from "@/components/analysis/AnalysisPanel";
 import { EvaluationCard } from "@/components/evaluation/EvaluationCard";
 import { CompositionTable } from "@/components/formula/CompositionTable";
+
 import { DiluteButton } from "@/components/formula/DiluteButton";
 import {
   Card,
@@ -69,6 +70,12 @@ export default async function FormulaDetailPage({
           </>
         }
       >
+        <Button asChild variant="outline">
+          <Link href={`/stock/produksi?v=${selected.id}`}>
+            <Factory className="size-4" />
+            Catat produksi
+          </Link>
+        </Button>
         <Button asChild variant="outline">
           <Link href={`/formulas/${id}/weigh?v=${selected.id}`}>
             <Scale className="size-4" />

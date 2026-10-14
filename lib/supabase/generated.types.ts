@@ -1006,6 +1006,77 @@ export type Database = {
           },
         ]
       }
+      stock_movements: {
+        Row: {
+          created_at: string
+          formula_version_id: string | null
+          fragrance_oil_id: string | null
+          happened_at: string
+          id: string
+          kind: Database["public"]["Enums"]["movement_kind"]
+          note: string | null
+          owner_id: string
+          qty_g: number
+          raw_material_id: string | null
+          unit_price_idr: number | null
+        }
+        Insert: {
+          created_at?: string
+          formula_version_id?: string | null
+          fragrance_oil_id?: string | null
+          happened_at?: string
+          id?: string
+          kind: Database["public"]["Enums"]["movement_kind"]
+          note?: string | null
+          owner_id: string
+          qty_g: number
+          raw_material_id?: string | null
+          unit_price_idr?: number | null
+        }
+        Update: {
+          created_at?: string
+          formula_version_id?: string | null
+          fragrance_oil_id?: string | null
+          happened_at?: string
+          id?: string
+          kind?: Database["public"]["Enums"]["movement_kind"]
+          note?: string | null
+          owner_id?: string
+          qty_g?: number
+          raw_material_id?: string | null
+          unit_price_idr?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stock_movements_formula_version_id_fkey"
+            columns: ["formula_version_id"]
+            isOneToOne: false
+            referencedRelation: "formula_versions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_movements_fragrance_oil_id_fkey"
+            columns: ["fragrance_oil_id"]
+            isOneToOne: false
+            referencedRelation: "fragrance_oils"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_movements_owner_id_fkey"
+            columns: ["owner_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_movements_raw_material_id_fkey"
+            columns: ["raw_material_id"]
+            isOneToOne: false
+            referencedRelation: "raw_materials"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_stock: {
         Row: {
           created_at: string
@@ -1072,6 +1143,38 @@ export type Database = {
           },
         ]
       }
+      stock_on_hand: {
+        Row: {
+          fragrance_oil_id: string | null
+          last_moved_at: string | null
+          owner_id: string | null
+          qty_g: number | null
+          raw_material_id: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stock_movements_fragrance_oil_id_fkey"
+            columns: ["fragrance_oil_id"]
+            isOneToOne: false
+            referencedRelation: "fragrance_oils"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_movements_owner_id_fkey"
+            columns: ["owner_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_movements_raw_material_id_fkey"
+            columns: ["raw_material_id"]
+            isOneToOne: false
+            referencedRelation: "raw_materials"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
       is_admin: { Args: never; Returns: boolean }
@@ -1123,6 +1226,7 @@ export type Database = {
       impact_basis: "as_sold" | "active"
       import_status: "previewed" | "applied" | "discarded"
       line_type: "raw_material" | "fo" | "accord"
+      movement_kind: "pembelian" | "produksi" | "penyesuaian"
       rule_source: "temen" | "klasik" | "saya"
       tier_key: "top" | "mid" | "base" | "all"
       transition_verdict: "smooth" | "broken" | "muddy"
@@ -1267,6 +1371,7 @@ export const Constants = {
       impact_basis: ["as_sold", "active"],
       import_status: ["previewed", "applied", "discarded"],
       line_type: ["raw_material", "fo", "accord"],
+      movement_kind: ["pembelian", "produksi", "penyesuaian"],
       rule_source: ["temen", "klasik", "saya"],
       tier_key: ["top", "mid", "base", "all"],
       transition_verdict: ["smooth", "broken", "muddy"],

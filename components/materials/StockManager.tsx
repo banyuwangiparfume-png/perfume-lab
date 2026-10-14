@@ -6,12 +6,18 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toggleStock } from "@/app/actions/versions";
-import { fmtIdr, fmtNum } from "@/lib/calc/format";
+import {
+  StockEntryDialog,
+  type EntryTarget,
+} from "@/components/materials/StockEntryDialog";
+import { fmtGram, fmtIdr, fmtNum } from "@/lib/calc/format";
 import { FUNCTION_LABELS } from "@/lib/calc/functions";
 import { cn } from "@/lib/utils";
 
 export type StockRow = {
   kind: "rm" | "fo";
+  /** sisa gram dari buku besar; null = belum pernah bergerak sama sekali */
+  onHand: number | null;
   id: string;
   name: string;
   synonym: string | null;
@@ -22,7 +28,7 @@ export type StockRow = {
   inStock: boolean;
 };
 
-type Filter = "all" | "in" | "out";
+type Filter = "all" | "in" | "out" | "habis";
 
 /**
  * Daftar stok: satu klik bintang per bahan.
@@ -35,6 +41,10 @@ export function StockManager({ rows }: { rows: StockRow[] }) {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
   const [, start] = useTransition();
+  const [entry, setEntry] = useState<{
+    target: EntryTarget;
+    mode: "pembelian" | "penyesuaian";
+  } | null>(null);
 
   const [stock, setStock] = useOptimistic(
     new Set(rows.filter((r) => r.inStock).map((r) => r.id)),
@@ -61,6 +71,10 @@ export function StockManager({ rows }: { rows: StockRow[] }) {
       const has = stock.has(r.id);
       if (filter === "in" && !has) return false;
       if (filter === "out" && has) return false;
+      // "habis" = pernah ada lalu nol. Berbeda dari belum pernah dicatat, dan
+      // justru inilah yang perlu dibeli ulang.
+      if (filter === "habis" && !(r.onHand != null && r.onHand <= 0))
+        return false;
       if (!q) return true;
       return [r.name, r.synonym, r.family]
         .filter(Boolean)
@@ -68,7 +82,19 @@ export function StockManager({ rows }: { rows: StockRow[] }) {
     });
   }, [rows, search, filter, stock]);
 
+  const open = (row: StockRow, mode: "pembelian" | "penyesuaian") =>
+    setEntry({
+      target: {
+        id: row.id,
+        kind: row.kind,
+        name: row.name,
+        onHand: row.onHand ?? 0,
+      },
+      mode,
+    });
+
   const count = stock.size;
+  const totalOnHand = rows.reduce((a, r) => a + (r.onHand ?? 0), 0);
 
   return (
     <div className="space-y-4">
@@ -89,6 +115,7 @@ export function StockManager({ rows }: { rows: StockRow[] }) {
               ["all", "Semua"],
               ["in", "Punya"],
               ["out", "Belum punya"],
+              ["habis", "Habis"],
             ] as const
           ).map(([key, label]) => (
             <Button
@@ -106,8 +133,12 @@ export function StockManager({ rows }: { rows: StockRow[] }) {
 
       <p className="text-[13px] text-[var(--text-muted)]">
         <strong className="font-semibold text-[var(--text)]">{count}</strong>{" "}
-        bahan ditandai punya, dari {rows.length}. Yang ditandai muncul dengan ★
-        di picker dan bisa dipakai menyaring saran bridger.
+        bahan ditandai punya, dari {rows.length}. Total tercatat di rak{" "}
+        <strong className="font-semibold text-[var(--text)]">
+          {fmtGram(totalOnHand)} g
+        </strong>
+        . Yang ditandai muncul dengan ★ di picker dan bisa dipakai menyaring
+        saran bridger.
       </p>
 
       <div className="overflow-x-auto rounded-xl border border-[var(--border)] bg-[var(--surface)]">
@@ -118,8 +149,12 @@ export function StockManager({ rows }: { rows: StockRow[] }) {
               <th className="px-3 py-2.5 text-left font-medium">Bahan</th>
               <th className="px-3 py-2.5 text-left font-medium">Family</th>
               <th className="px-3 py-2.5 text-left font-medium">Fungsi</th>
+              <th className="px-3 py-2.5 text-right font-medium">Sisa (g)</th>
               <th className="px-3 py-2.5 text-right font-medium">Impact</th>
               <th className="px-3 py-2.5 text-right font-medium">Harga/g</th>
+              <th className="w-[150px] px-3 py-2.5 text-right font-medium">
+                Catat
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -173,6 +208,16 @@ export function StockManager({ rows }: { rows: StockRow[] }) {
                         row.functionCategory)
                       : "—"}
                   </td>
+                  <td
+                    className={cn(
+                      "numeric px-3 py-2 text-right text-[13px]",
+                      row.onHand != null &&
+                        row.onHand <= 0 &&
+                        "font-semibold text-[var(--danger)]",
+                    )}
+                  >
+                    {row.onHand == null ? "—" : fmtGram(row.onHand)}
+                  </td>
                   <td className="numeric px-3 py-2 text-right text-[13px]">
                     {row.impact == null ? "—" : fmtNum(row.impact)}
                   </td>
@@ -181,12 +226,39 @@ export function StockManager({ rows }: { rows: StockRow[] }) {
                       ? "—"
                       : `${fmtIdr(row.pricePerGram)}/g`}
                   </td>
+
+                  <td className="px-3 py-2 text-right">
+                    <span className="inline-flex gap-1">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => open(row, "pembelian")}
+                      >
+                        Beli
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => open(row, "penyesuaian")}
+                      >
+                        Sesuaikan
+                      </Button>
+                    </span>
+                  </td>
                 </tr>
               );
             })}
           </tbody>
         </table>
       </div>
+
+      <StockEntryDialog
+        target={entry?.target ?? null}
+        mode={entry?.mode ?? "pembelian"}
+        onClose={() => setEntry(null)}
+      />
 
       {filtered.length === 0 && (
         <p className="text-[13px] text-[var(--text-muted)]">

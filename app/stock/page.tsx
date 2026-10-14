@@ -1,17 +1,20 @@
-import { Beaker } from "lucide-react";
+import Link from "next/link";
+import { Beaker, Factory } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { StockManager } from "@/components/materials/StockManager";
 import { EmptyState, PageHeader } from "@/components/shared/primitives";
 import { listFragranceOils } from "@/lib/data/fragrance-oils";
 import { listMaterials } from "@/lib/data/materials";
-import { listStock } from "@/lib/data/stock";
+import { listStock, stockOnHand } from "@/lib/data/stock";
 
 export const dynamic = "force-dynamic";
 
 export default async function StockPage() {
-  const [materials, fos, stock] = await Promise.all([
+  const [materials, fos, stock, onHand] = await Promise.all([
     listMaterials(),
     listFragranceOils(),
     listStock(),
+    stockOnHand(),
   ]);
 
   // FO ikut: pertanyaannya sama saja — apakah botolnya ada di rak saya.
@@ -26,6 +29,7 @@ export default async function StockPage() {
       impact: m.effectiveImpact,
       pricePerGram: m.pricePerGram,
       inStock: stock.materials.has(m.id),
+      onHand: onHand.materials.get(m.id) ?? null,
     })),
     ...fos.map((f) => ({
       kind: "fo" as const,
@@ -37,6 +41,7 @@ export default async function StockPage() {
       impact: null,
       pricePerGram: f.price_per_gram == null ? null : Number(f.price_per_gram),
       inStock: stock.fos.has(f.id),
+      onHand: onHand.fos.get(f.id) ?? null,
     })),
   ].sort((a, b) => a.name.localeCompare(b.name, "id"));
 
@@ -44,8 +49,15 @@ export default async function StockPage() {
     <>
       <PageHeader
         title="Stok saya"
-        subtitle="Tandai bahan yang benar-benar ada di rak. Saran yang bahannya harus dibeli dulu tidak bisa dicoba malam itu juga."
-      />
+        subtitle="Tandai bahan yang benar-benar ada di rak, catat pembelian, dan kurangi lewat produksi."
+      >
+        <Button asChild>
+          <Link href="/stock/produksi">
+            <Factory className="size-4" />
+            Catat produksi
+          </Link>
+        </Button>
+      </PageHeader>
 
       {rows.length === 0 ? (
         <EmptyState

@@ -219,3 +219,50 @@ export async function listAccordsForPicker(
           : null,
   }));
 }
+
+export type ProducibleVersion = {
+  id: string;
+  label: string;
+  batchG: number;
+};
+
+/**
+ * Semua versi yang bisa diracik: versi TERSIMPAN dari formula yang belum
+ * diarsipkan.
+ *
+ * Draf sengaja tidak ikut. Draf berubah tiap detik; kalau boleh diracik,
+ * catatan produksinya akan menunjuk ke sesuatu yang sudah berbeda besok — dan
+ * catatan yang tidak bisa dipercaya lebih buruk daripada tidak ada catatan.
+ */
+export async function listProducibleVersions(): Promise<ProducibleVersion[]> {
+  const db = getDb();
+  const ownerId = await getOwnerId();
+
+  const { data, error } = await db
+    .from("formula_versions")
+    .select(
+      "id, version_no, batch_g, formula:formulas!inner(name, owner_id, is_archived)",
+    )
+    .gt("version_no", 0)
+    .eq("formula.owner_id", ownerId)
+    .eq("formula.is_archived", false)
+    .order("version_no", { ascending: false });
+
+  if (error) throw new Error(`Gagal memuat daftar versi: ${error.message}`);
+
+  type Row = {
+    id: string;
+    version_no: number;
+    batch_g: number;
+    formula: { name: string } | null;
+  };
+
+  return ((data ?? []) as unknown as Row[])
+    .filter((r) => r.formula)
+    .map((r) => ({
+      id: r.id,
+      label: versionLabel(r.formula!.name, r.version_no),
+      batchG: Number(r.batch_g),
+    }))
+    .sort((a, b) => a.label.localeCompare(b.label, "id"));
+}
