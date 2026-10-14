@@ -10,6 +10,7 @@ import { expand, ExpandError, mergeByMaterial, type MergedItem } from "./expand"
 import { roleReport, type RoleReport } from "./roles";
 import { functionMix, shareOf, type FunctionMix } from "./functions";
 import { lineTable, type LineTable } from "./lines";
+import { phaseReport, type PhaseReport } from "./phases";
 import { runRules, type Warning } from "./rules";
 import { solventReport, type SolventReport } from "./solvents";
 import {
@@ -26,6 +27,8 @@ export type Analysis = {
   /** komposisi per baris yang diketik user — untuk dibaca, bukan dihitung ulang */
   lines: LineTable;
   strength: StrengthResult;
+  /** kekuatan per fase: Opening, Heart, Drydown — pendekatan dari tier */
+  phases: PhaseReport;
   /** komposisi peran bahan: diffuser / modifier / bridger / fixative */
   functions: FunctionMix;
   /**
@@ -179,6 +182,7 @@ export function analyze(
     merged: mergeByMaterial(items),
     lines,
     strength,
+    phases: phaseReport(ctx, items),
     functions,
     diffusers,
     fixatives,

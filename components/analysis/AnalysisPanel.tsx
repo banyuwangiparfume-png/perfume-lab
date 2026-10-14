@@ -12,6 +12,7 @@ import { Cell, Pie, PieChart, ResponsiveContainer } from "recharts";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { Analysis } from "@/lib/calc/analyze";
+import { PHASE_META } from "@/lib/calc/phases";
 import type { RoleReport } from "@/lib/calc/roles";
 import type { BridgeStatus, BridgeSuggestion } from "@/lib/calc/bridge";
 import { FUNCTION_HINTS, SPL_NOTE, UNKNOWN_KEY } from "@/lib/calc/functions";
@@ -310,7 +311,151 @@ function AromaTab({ analysis }: { analysis: Analysis }) {
   );
 }
 
+/**
+ * Dua cara membaca kekuatan. "Total" satu angka per bahan sepanjang umur
+ * parfum; "Per fase" memecahnya jadi Opening / Heart / Drydown, karena
+ * pertanyaan yang paling sering — "yang kecium duluan apa?", "kayunya udah
+ * kecium dari awal?" — tidak bisa dijawab satu angka.
+ */
 function StrengthTab({ analysis }: { analysis: Analysis }) {
+  const [view, setView] = useState<"total" | "fase">("total");
+
+  return (
+    <div className="space-y-3">
+      <Tabs value={view} onValueChange={(v) => setView(v as "total" | "fase")}>
+        <TabsList className="w-full">
+          <TabsTrigger value="total">Total</TabsTrigger>
+          <TabsTrigger value="fase">Per fase</TabsTrigger>
+        </TabsList>
+      </Tabs>
+      {view === "total" ? (
+        <StrengthTotal analysis={analysis} />
+      ) : (
+        <PhaseView report={analysis.phases} />
+      )}
+    </div>
+  );
+}
+
+function PhaseView({ report }: { report: Analysis["phases"] }) {
+  const hasData = report.phases.some((p) => p.rows.length > 0);
+  if (!hasData) {
+    return (
+      <p className="text-[13px] text-[var(--text-muted)]">
+        Belum ada bahan yang bisa dinilai kekuatannya.
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {report.phases.map((p) => {
+        const meta = PHASE_META[p.key];
+        return (
+          <section
+            key={p.key}
+            className="space-y-2 rounded-lg border border-[var(--border)] p-3"
+          >
+            <div className="flex items-baseline gap-2">
+              <span className="text-[13px] font-semibold">{meta.label}</span>
+              <span className="text-[11px] text-[var(--text-subtle)]">
+                {meta.when}
+              </span>
+            </div>
+
+            {/* Porsi tier di fase ini, sewarna dengan header kartu tier. */}
+            <div
+              className="flex h-2 overflow-hidden rounded-full bg-[var(--surface-muted)]"
+              aria-hidden
+            >
+              {PYRAMID_TIERS.map((t) => (
+                <div
+                  key={t}
+                  style={{
+                    width: `${p.tiers[t as "top" | "mid" | "base"]}%`,
+                    backgroundColor: TIER_META[t].color,
+                  }}
+                />
+              ))}
+            </div>
+            <p className="numeric text-[11px] text-[var(--text-muted)]">
+              {PYRAMID_TIERS.map(
+                (t) =>
+                  `${TIER_META[t].label} ${fmtPct(p.tiers[t as "top" | "mid" | "base"])}`,
+              ).join(" · ")}
+            </p>
+
+            {p.facets.length > 0 && (
+              <p className="text-[12px] leading-relaxed">
+                <span className="text-[var(--text-subtle)]">tercium </span>
+                {p.facets.map((f, i) => (
+                  <span key={f.facet}>
+                    {i > 0 && (
+                      <span className="text-[var(--text-subtle)]"> · </span>
+                    )}
+                    <span
+                      className="font-medium"
+                      style={{
+                        color: `color-mix(in oklab, ${facetColor(f.facet)} 78%, var(--text))`,
+                      }}
+                    >
+                      {facetLabel(f.facet)}
+                    </span>
+                  </span>
+                ))}
+              </p>
+            )}
+
+            <ul className="space-y-0.5 text-[12px]">
+              {p.rows.slice(0, 4).map((r) => (
+                <li key={r.refId} className="flex items-baseline gap-2">
+                  <span
+                    aria-hidden
+                    className="size-2 shrink-0 rounded-full"
+                    style={{ backgroundColor: TIER_META[r.tier].color }}
+                  />
+                  <span className="min-w-0 flex-1 truncate">{r.name}</span>
+                  <span className="numeric text-[var(--text-muted)]">
+                    {fmtPct(r.pct)}
+                  </span>
+                </li>
+              ))}
+              {p.rows.length > 4 && (
+                <li className="pl-4 text-[11px] text-[var(--text-subtle)]">
+                  +{p.rows.length - 4} bahan lain
+                </li>
+              )}
+            </ul>
+
+            {p.notes.map((n) => (
+              <p
+                key={n}
+                className="rounded bg-[var(--info-soft)] px-2.5 py-1.5 text-[12px] leading-relaxed"
+              >
+                {n}
+              </p>
+            ))}
+          </section>
+        );
+      })}
+
+      {/* Batas pendekatan ini disebut terus terang. Angka per fase yang
+          terlihat presisi tapi tidak menyebut asalnya akan dipercaya lebih
+          dari yang layak. */}
+      <p className="text-[11px] leading-relaxed text-[var(--text-subtle)]">
+        Ini pendekatan dari tier
+        {report.fromPyramid ? "" : " (diambil dari kebiasaan tiap bahan, karena mode piramida mati)"}
+        , bukan dari kecepatan menguap tiap molekul — pricelist tidak membawa
+        data itu. Semua bahan sudah ada di udara sejak semprotan pertama; yang
+        berubah cuma siapa yang paling keras. Bahan yang kamu taruh di tier
+        yang tidak sesuai kebiasaannya akan terhitung salah fase. Urutan
+        sebenarnya tetap hidungmu yang memutuskan, di blotter dan di kulit.
+      </p>
+    </div>
+  );
+}
+
+function StrengthTotal({ analysis }: { analysis: Analysis }) {
   const rows = analysis.strength.rows;
   const max = Math.max(1, ...rows.map((r) => r.strengthPct ?? 0));
 
