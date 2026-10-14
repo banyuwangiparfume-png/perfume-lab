@@ -17,7 +17,7 @@ import { FUNCTION_HINTS, SPL_NOTE, UNKNOWN_KEY } from "@/lib/calc/functions";
 import { fmtGram, fmtIdr, fmtNum, fmtPct } from "@/lib/calc/format";
 import { RULES_FOOTER, RULES_HEALTHY, type Warning } from "@/lib/calc/rules";
 import type { FormulaContext, Tier } from "@/lib/calc/types";
-import { PYRAMID_TIERS, TIER_META, facetColor } from "@/lib/tiers";
+import { PYRAMID_TIERS, TIER_META, facetColor, facetLabel } from "@/lib/tiers";
 import { cn } from "@/lib/utils";
 
 type TabKey =
@@ -131,9 +131,10 @@ function AromaTab({ analysis }: { analysis: Analysis }) {
   const slices = [
     ...pie.slices.map((s) => ({
       key: s.facet,
-      name: s.facet,
+      name: facetLabel(s.facet),
       value: s.pct,
       contributors: s.contributors,
+      leaning: s.leaning,
     })),
     ...(pie.other > 0.05
       ? [
@@ -142,6 +143,7 @@ function AromaTab({ analysis }: { analysis: Analysis }) {
             name: "Lainnya",
             value: pie.other,
             contributors: [],
+            leaning: [],
           },
         ]
       : []),
@@ -199,8 +201,8 @@ function AromaTab({ analysis }: { analysis: Analysis }) {
         {dominant && (
           <div className="pointer-events-none absolute inset-0 grid place-items-center text-center">
             <div>
-              <p className="text-[13px] font-semibold capitalize">
-                {dominant.facet}
+              <p className="text-[13px] font-semibold">
+                {facetLabel(dominant.facet)}
               </p>
               <p className="numeric text-[12px] text-[var(--text-muted)]">
                 {fmtPct(dominant.pct)}
@@ -211,12 +213,14 @@ function AromaTab({ analysis }: { analysis: Analysis }) {
       </div>
 
 {/*
-        Tiap irisan menyebut penyumbangnya. Tanpa itu pie cuma menjawab "apa"
-        dan bukan "dari siapa" — dan saat angkanya terlalu tinggi, user harus
+        Tiap irisan menjawab tiga hal berurutan: seberapa besar, ke arah mana,
+        dan dari bahan siapa. Tanpa arahnya, "Floral 26%" masih belum bisa
+        dibayangkan baunya — floral yang condong fruity dan floral yang condong
+        powdery adalah dua parfum yang berbeda. Tanpa penyumbangnya, user harus
         menyisir seluruh formula sendiri untuk menebak baris mana yang perlu
-        diturunkan. Daftarnya sudah ikut dihitung sejak awal.
+        diubah. Keduanya sudah ikut dihitung di aromaShares().
       */}
-      <ul className="space-y-1.5 text-[13px]">
+      <ul className="space-y-2.5 text-[13px]">
         {slices.map((s) => (
           <li key={s.key}>
             <div className="flex items-center gap-2">
@@ -230,9 +234,43 @@ function AromaTab({ analysis }: { analysis: Analysis }) {
                       : facetColor(s.key),
                 }}
               />
-              <span className="flex-1 capitalize">{s.name}</span>
+              <span className="flex-1">{s.name}</span>
               <span className="numeric font-medium">{fmtPct(s.value)}</span>
             </div>
+
+            {/*
+              Arah irisan, di atas daftar penyumbang. Urutannya disengaja:
+              "ke mana floral-nya condong" adalah watak, dan watak dibaca
+              duluan; nama bahan adalah tempat mengubahnya.
+            */}
+            {s.leaning.length > 0 && (
+              <p className="ml-4.5 text-[11px] leading-relaxed">
+                <span className="text-[var(--text-subtle)]">condong ke </span>
+                {s.leaning.map((l, i) => (
+                  <span key={l.facet}>
+                    {i > 0 && (
+                      <span className="text-[var(--text-subtle)]"> · </span>
+                    )}
+                    <span
+                      className="font-medium"
+                      // Warnanya sama dengan irisan pie-nya supaya terbaca
+                      // sebagai facet, bukan sebagai kata biasa. Dicampur ke
+                      // warna teks karena beberapa facet (creamy, powdery)
+                      // terlalu pucat untuk dibaca di ukuran 11px.
+                      style={{
+                        color: `color-mix(in oklab, ${facetColor(l.facet)} 78%, var(--text))`,
+                      }}
+                    >
+                      {facetLabel(l.facet)}
+                    </span>
+                    <span className="numeric text-[var(--text-subtle)]">
+                      {" "}
+                      {fmtPct(l.pct)}
+                    </span>
+                  </span>
+                ))}
+              </p>
+            )}
 
             {s.contributors.length > 0 && (
               <p className="ml-4.5 text-[11px] leading-relaxed text-[var(--text-subtle)]">
@@ -247,6 +285,17 @@ function AromaTab({ analysis }: { analysis: Analysis }) {
           </li>
         ))}
       </ul>
+
+      {/*
+        Dua persen bertetangga dengan penyebut berbeda adalah jebakan baca, dan
+        satu kalimat ini yang mencegahnya dibaca terbalik.
+      */}
+      {slices.some((s) => s.leaning.length > 0) && (
+        <p className="text-[11px] leading-relaxed text-[var(--text-subtle)]">
+          Angka di baris <span className="font-medium">condong ke</span>
+          dihitung terhadap irisannya sendiri, bukan terhadap seluruh formula.
+        </p>
+      )}
 
       {(pie.excludedPct > 0.05 || pie.missingFacets.length > 0) && (
         <p className="border-t border-[var(--border)] pt-2 text-[11px] text-[var(--text-subtle)]">

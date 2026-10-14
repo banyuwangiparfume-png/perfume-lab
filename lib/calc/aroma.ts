@@ -10,7 +10,22 @@ export type AromaShare = {
   facet: string;
   pct: number;
   contributors: { refId: string; name: string; pct: number }[];
+  /**
+   * Ke mana irisan ini condong: facet LAIN yang dibawa oleh bahan-bahan
+   * penyumbangnya. Persennya relatif terhadap irisan ini sendiri, bukan
+   * terhadap seluruh formula — "floral-nya 40% ke arah fruity", bukan "40%
+   * formulanya fruity".
+   */
+  leaning: { facet: string; pct: number }[];
 };
+
+/**
+ * Batas sebuah kecondongan layak disebut, dan berapa banyak yang ditampilkan.
+ * Di bawah 8% arahnya tidak akan terbaca di hidung, dan menyebutkannya cuma
+ * memanjangkan daftar tanpa mengubah keputusan apa pun.
+ */
+const LEAN_MIN_PCT = 8;
+const LEAN_MAX = 3;
 
 /**
  * Pie dominasi aroma.
@@ -35,6 +50,7 @@ export function aromaShares(
 ): AromaShare[] {
   const share = new Map<string, number>();
   const byFacet = new Map<string, Map<string, number>>();
+  const leaning = new Map<string, Map<string, number>>();
 
   for (const item of items) {
     if (tierFilter && item.tier !== tierFilter) continue;
@@ -57,6 +73,25 @@ export function aromaShares(
       if (!byFacet.has(facet)) byFacet.set(facet, new Map());
       const c = byFacet.get(facet)!;
       c.set(item.refId, (c.get(item.refId) ?? 0) + add);
+
+      // Arah irisan ini. Yang dihitung: untuk tiap satuan facet ini, berapa
+      // banyak facet lain yang ikut terbawa dari bahan yang sama. Pembaginya
+      // `l1` — sama dengan pembagi sumbangannya — supaya besarannya tidak
+      // hilang: bahan yang 97% floral dan 3% musk memang hampir tidak punya
+      // arah lain, dan angkanya harus bilang 3, bukan 100.
+      //
+      // Bahan berfacet tunggal ikut jadi penyebut lewat `share` tapi tidak
+      // menyumbang arah apa pun. Jadi irisan yang penyumbangnya kebanyakan
+      // bahan murni akan punya kecondongan yang kecil dengan sendirinya — dan
+      // itu memang jawaban yang benar.
+      if (weight <= 0) continue;
+
+      if (!leaning.has(facet)) leaning.set(facet, new Map());
+      const dir = leaning.get(facet)!;
+      for (const [other, otherWeight] of Object.entries(facets)) {
+        if (other === facet || otherWeight <= 0) continue;
+        dir.set(other, (dir.get(other) ?? 0) + (add * otherWeight) / l1);
+      }
     }
   }
 
@@ -74,6 +109,16 @@ export function aromaShares(
           pct: (v / total) * 100,
         }))
         .sort((a, b) => b.pct - a.pct),
+      leaning:
+        value > 0
+          ? [...(leaning.get(facet) ?? new Map()).entries()]
+              .map(([other, v]) => ({ facet: other, pct: (v / value) * 100 }))
+              .filter((l) => l.pct >= LEAN_MIN_PCT)
+              // Seri diputus lewat abjad supaya urutannya tidak berubah antar
+              // render hanya karena urutan kunci objeknya berbeda.
+              .sort((a, b) => b.pct - a.pct || (a.facet < b.facet ? -1 : 1))
+              .slice(0, LEAN_MAX)
+          : [],
     }))
     .sort((a, b) => b.pct - a.pct);
 }

@@ -50,6 +50,42 @@ export const BATCH_PRESETS = [3, 10, 30, 50, 100] as const;
 
 export const facetColor = (key: string) => `var(--facet-${key}, var(--facet-other))`;
 
+/**
+ * Nama baca facet. Kunci mentahnya ("white", "resin") cukup untuk perhitungan
+ * tapi menyesatkan di layar: "White" sendirian tidak berarti apa-apa, "White
+ * floral" langsung terbaca.
+ *
+ * Sumber aslinya tabel `facets` di database, dan layar editor memang memakai
+ * yang dari sana. Salinan ini untuk tempat yang tidak membawa data itu —
+ * panel analisa dipakai juga di halaman baca formula. Supaya dua sumber ini
+ * tidak diam-diam menyimpang, isinya diikat ke `seed/facet-keywords.json`
+ * lewat test.
+ */
+export const FACET_LABELS: Record<string, string> = {
+  citrus: "Citrus",
+  green: "Green",
+  aromatic: "Aromatik/Herbal",
+  fruity: "Fruity",
+  floral: "Floral",
+  rose: "Rose",
+  white: "White floral",
+  powdery: "Powdery/Iris",
+  clean: "Clean/Aldehydic",
+  aquatic: "Marine/Ozonic",
+  spicy: "Spicy",
+  woody: "Woody",
+  earthy: "Earthy/Mossy",
+  amber: "Amber",
+  resin: "Balsamic/Resin",
+  gourmand: "Sweet/Gourmand",
+  creamy: "Creamy/Lactonic",
+  musk: "Musk",
+  animalic: "Animalic/Leather",
+  smoky: "Smoky/Tobacco",
+};
+
+export const facetLabel = (key: string) => FACET_LABELS[key] ?? key;
+
 /** Menerima koma desimal — "7,5" sama sahnya dengan "7.5". */
 export function parseDecimal(input: string): number | null {
   const s = input.trim().replace(",", ".");
