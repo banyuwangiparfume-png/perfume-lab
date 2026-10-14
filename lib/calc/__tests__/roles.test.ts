@@ -161,3 +161,27 @@ describe("diffuser per sasaran", () => {
     }
   });
 });
+
+describe("diffuser harus benar-benar mengangkat", () => {
+  it("tidak menyarankan bahan yang menguap lebih cepat dari tier sasarannya", () => {
+    // Bahan Top sudah habis sebelum drydown — tidak mungkin mengangkat Base.
+    const c = withRole("diffuser", "supplier");
+    const result = analyze(c);
+    const rank = { top: 0, mid: 1, base: 2 } as const;
+    for (const t of ["mid", "base"] as const) {
+      for (const s of result.diffusers[t].suggestions) {
+        expect(rank[s.tier as "top" | "mid" | "base"]).toBeGreaterThanOrEqual(rank[t]);
+      }
+    }
+  });
+
+  it("tiap saran diffuser menaikkan facet yang dia klaim", () => {
+    const result = analyze(withRole("diffuser", "supplier"));
+    for (const t of ["all", "top", "mid", "base"] as const) {
+      for (const s of result.diffusers[t].suggestions) {
+        expect(s.preview).not.toBeNull();
+        expect(s.preview!.afterPct).toBeGreaterThan(s.preview!.beforePct);
+      }
+    }
+  });
+});

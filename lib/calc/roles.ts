@@ -61,6 +61,34 @@ const LIFT_MAX = 3;
 const inScope = (item: ExpandedItem, scope: Tier) =>
   scope === "all" || item.tier === scope;
 
+/** Urutan menguap: makin besar, makin lambat. */
+const EVAPORATION_RANK: Record<Exclude<Tier, "all">, number> = {
+  top: 0,
+  mid: 1,
+  base: 2,
+};
+
+/**
+ * Bisakah bahan di tier `candidate` mengangkat tier `scope`?
+ *
+ * Hanya kalau dia masih ada di udara saat tier itu tercium — artinya tidak
+ * menguap lebih cepat. Bahan Top sudah habis sebelum drydown, jadi tidak
+ * mungkin mengangkat Base, berapa pun kemiripan baunya. Sebaliknya boleh:
+ * Hedione (Mid) sudah ada sejak semprotan pertama dan memang lazim dipakai
+ * untuk mengangkat pembukaan.
+ */
+const outlasts = (candidate: Tier, scope: Tier) =>
+  scope === "all" ||
+  candidate === "all" ||
+  EVAPORATION_RANK[candidate] >= EVAPORATION_RANK[scope];
+
+/**
+ * Kenaikan pratinjau minimal supaya sebuah saran diffuser layak ditampilkan,
+ * dalam poin persen. Saran yang tidak menggeser pie sama sekali — atau malah
+ * menurunkannya karena baunya lebih ke arah lain — bukan penguat.
+ */
+const MIN_LIFT_POINTS = 0.1;
+
 /**
  * Arah aroma bagian formula yang jadi sasaran, dibobot kekuatan.
  *
@@ -253,41 +281,59 @@ export function roleReport(
     }
   }
 
-  // Pratinjau dan daftar "nempel ke" cuma dihitung untuk yang lolos ke
-  // tampilan — dua-duanya menghitung ulang pie, dan kandidatnya bisa puluhan.
-  const suggestions: RoleSuggestion[] = candidates
-    .sort((a, b) => b.score - a.score)
-    .slice(0, limit)
-    .map(({ material, score, shared }) => {
-      const dose = starterDose(material, {
-        totalScore: opts.totalScore,
-        settings: ctx.settings,
-      });
-      // Fixative tempatnya di Base: yang menahan harus berada di lapisan yang
-      // paling lambat menguap. Diffuser tetap di tier kebiasaannya walau
-      // sasarannya tier lain — menaruh Hedione di Top tidak membuatnya
-      // menguap lebih cepat.
-      const tier: Tier =
-        role === "fixative" ? "base" : (material.noteTierHint ?? "mid");
+  // Pratinjau dan daftar "nempel ke" cuma dihitung sampai saran yang tampil
+  // terkumpul — dua-duanya menghitung ulang pie, dan kandidatnya bisa puluhan.
+  // Batas pemeriksaannya dijaga supaya formula yang tidak punya penguat sama
+  // sekali tidak menghitung ulang pie untuk seluruh master.
+  const suggestions: RoleSuggestion[] = [];
+  const maxChecks = limit * 4;
+  let checked = 0;
 
-      return {
-        materialId: material.id,
-        name: material.name,
-        score,
-        reason:
-          role === "diffuser"
-            ? `menguatkan sisi ${shared ?? "—"} yang sudah ada`
-            : `menahan dari sisi ${shared ?? "—"}, searah dengan formulanya`,
-        impact: material.impact,
-        inStock: ctx.stock.has(material.id),
-        starterDose: dose,
-        tier,
-        lifts: liftsOf(material, items, ctx.materials, scope),
-        preview: shared
-          ? previewFacetShift(items, ctx.materials, material, dose, tier, shared)
-          : null,
-      };
+  for (const { material, score, shared } of candidates.sort(
+    (a, b) => b.score - a.score,
+  )) {
+    if (suggestions.length >= limit || checked >= maxChecks) break;
+
+    // Fixative tempatnya di Base: yang menahan harus berada di lapisan yang
+    // paling lambat menguap. Diffuser tetap di tier kebiasaannya walau
+    // sasarannya tier lain — menaruh Hedione di Top tidak membuatnya
+    // menguap lebih cepat.
+    const tier: Tier =
+      role === "fixative" ? "base" : (material.noteTierHint ?? "mid");
+    if (role === "diffuser" && !outlasts(tier, scope)) continue;
+
+    checked++;
+    const dose = starterDose(material, {
+      totalScore: opts.totalScore,
+      settings: ctx.settings,
     });
+    const preview = shared
+      ? previewFacetShift(items, ctx.materials, material, dose, tier, shared)
+      : null;
+
+    if (
+      role === "diffuser" &&
+      (!preview || preview.afterPct - preview.beforePct < MIN_LIFT_POINTS)
+    ) {
+      continue;
+    }
+
+    suggestions.push({
+      materialId: material.id,
+      name: material.name,
+      score,
+      reason:
+        role === "diffuser"
+          ? `menguatkan sisi ${shared ?? "—"} yang sudah ada`
+          : `menahan dari sisi ${shared ?? "—"}, searah dengan formulanya`,
+      impact: material.impact,
+      inStock: ctx.stock.has(material.id),
+      starterDose: dose,
+      tier,
+      lifts: liftsOf(material, items, ctx.materials, scope),
+      preview,
+    });
+  }
 
   return {
     role,
