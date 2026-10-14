@@ -4,6 +4,7 @@ import { ClipboardList, Factory, Pencil, Scale } from "lucide-react";
 import { AnalysisPanel } from "@/components/analysis/AnalysisPanel";
 import { EvaluationCard } from "@/components/evaluation/EvaluationCard";
 import { CompositionTable } from "@/components/formula/CompositionTable";
+import { FormulaCardActions } from "@/components/formula/FormulaCardActions";
 
 import { DiluteButton } from "@/components/formula/DiluteButton";
 import {
@@ -70,6 +71,12 @@ export default async function FormulaDetailPage({
           </>
         }
       >
+        <FormulaCardActions
+          id={id}
+          name={formula.name}
+          versionCount={savedVersions.length}
+          archived={formula.is_archived}
+        />
         <Button asChild variant="outline">
           <Link href={`/stock/produksi?v=${selected.id}`}>
             <Factory className="size-4" />

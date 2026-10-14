@@ -6,6 +6,7 @@ import { fmtGram, fmtNum } from "@/lib/calc/format";
 import { listFormulas } from "@/lib/data/formulas";
 import type { FormulaCategoryEnum } from "@/lib/supabase/database.types";
 import { cn } from "@/lib/utils";
+import { FormulaCardActions } from "@/components/formula/FormulaCardActions";
 
 export const dynamic = "force-dynamic";
 
@@ -79,10 +80,21 @@ export default async function FormulasPage({
       ) : (
         <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {formulas.map((f) => (
-            <li key={f.id}>
+            <li key={f.id} className="relative">
+              {/* Menu ditaruh di luar <Link>, bukan di dalamnya: tombol di
+                  dalam tautan membuat tiap klik menu ikut membuka formulanya. */}
+              <div className="absolute right-2 top-2 z-10">
+                <FormulaCardActions
+                  id={f.id}
+                  name={f.name}
+                  versionCount={f.versionCount}
+                  archived={f.is_archived}
+                />
+              </div>
+
               <Link
                 href={`/formulas/${f.id}`}
-                className="block h-full rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-[var(--shadow-card)] transition-shadow hover:shadow-[var(--shadow-card-lg)]"
+                className="block h-full rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 pr-12 shadow-[var(--shadow-card)] transition-shadow hover:shadow-[var(--shadow-card-lg)]"
               >
                 <div className="flex items-start justify-between gap-2">
                   <h2 className="font-semibold leading-snug">{f.name}</h2>
