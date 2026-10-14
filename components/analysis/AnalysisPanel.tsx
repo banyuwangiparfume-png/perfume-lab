@@ -567,41 +567,56 @@ function BridgeTab({
       {withinTier.length > 0 && (
         <section className="space-y-2.5">
           <div>
-            <h4 className="text-[13px] font-semibold">Dalam tier</h4>
+            <h4 className="text-[13px] font-semibold">Kepaduan tier</h4>
             {/*
-              Transisi antar tier bisa mulus sementara isi satu tier sendiri
-              terdengar seperti dua hal yang ditaruh berdampingan. Yang
-              ditampilkan hanya pasangan yang TIDAK nyambung, diurut dari yang
-              paling renggang.
+              Dulu bagian ini membandingkan tiap PASANGAN bahan. Itu tidak
+              pernah selesai — tiap bridger yang ditambahkan jadi bahan baru
+              yang membentuk pasangan renggang dengan semua yang sudah ada — dan
+              salah menilai: dua bahan yang berbeda bukan cacat.
             */}
             <p className="text-[11px] leading-relaxed text-[var(--text-subtle)]">
-              Dua bahan di tier yang sama yang belum saling menyambung. Yang
-              paling renggang di atas.
+              Seberapa menyatu isi tiap tier sebagai satu accord. Bahan yang
+              berbeda satu sama lain bukan masalah — kontras itu yang membuat
+              accord menarik. Yang ditandai cuma bahan yang berdiri sendirian di
+              luar arah tiernya.
             </p>
           </div>
 
-          {withinTier.map((pair) => (
+          {withinTier.map((t) => (
             <div
-              key={`${pair.a.lineId}-${pair.b.lineId}`}
+              key={t.tier}
               className="rounded-lg border border-[var(--border)] p-3"
             >
               <div className="flex flex-wrap items-center gap-2">
                 <span
                   className="rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.04em]"
                   style={{
-                    color: TIER_META[pair.tier].color,
-                    backgroundColor: TIER_META[pair.tier].soft,
+                    color: TIER_META[t.tier].color,
+                    backgroundColor: TIER_META[t.tier].soft,
                   }}
                 >
-                  {TIER_META[pair.tier].label}
+                  {TIER_META[t.tier].label}
                 </span>
-                <span className="text-[13px] font-medium">
-                  {pair.a.name} ↔ {pair.b.name}
-                </span>
-                {badge(pair.status, pair.sim)}
+                <span className="text-[13px] font-medium">Kepaduan</span>
+                {badge(t.status, t.cohesion)}
               </div>
 
-              <SuggestionList suggestions={pair.suggestions} onAdd={onAdd} />
+              {t.outlier ? (
+                <>
+                  <p className="mt-1.5 text-[12px] leading-relaxed">
+                    <strong className="font-medium">{t.outlier.name}</strong>{" "}
+                    berdiri sendirian ({fmtPct(t.outlier.sim * 100)} dekat ke
+                    sisanya). Kalau itu memang disengaja, biarkan — kalau tidak,
+                    satu bahan di bawah bisa menyambungkannya.
+                  </p>
+                  <SuggestionList suggestions={t.suggestions} onAdd={onAdd} />
+                </>
+              ) : (
+                <p className="mt-1.5 text-[12px] text-[var(--text-subtle)]">
+                  Tidak ada bahan yang menyendiri. Tier ini terbaca sebagai satu
+                  accord.
+                </p>
+              )}
             </div>
           ))}
         </section>
@@ -609,7 +624,8 @@ function BridgeTab({
 
       <p className="text-[11px] leading-relaxed text-[var(--text-subtle)]">
         Satu celah, satu bridger. Mulai dosis kecil, naikkan sampai sambungannya
-        halus — bukan sampai bridger-nya kecium sendiri.
+        halus — bukan sampai bridger-nya kecium sendiri. Dan tidak semua celah
+        perlu ditambal: yang tidak mengganggu hidungmu, biarkan.
       </p>
     </div>
   );

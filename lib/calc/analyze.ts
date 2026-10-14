@@ -1,9 +1,9 @@
 import { aromaPie, type AromaPie } from "./aroma";
 import {
   crossTierBridges,
-  withinTierBridges,
+  tierCohesionReport,
   type TierBridge,
-  type WithinTierPair,
+  type TierCohesion,
 } from "./bridge";
 import { costBreakdown, type CostBreakdown } from "./cost";
 import { expand, ExpandError, mergeByMaterial, type MergedItem } from "./expand";
@@ -34,7 +34,7 @@ export type Analysis = {
   aroma: Record<Tier, AromaPie>;
   solvents: SolventReport;
   cost: CostBreakdown;
-  bridges: { crossTier: TierBridge[]; withinTier: WithinTierPair[] };
+  bridges: { crossTier: TierBridge[]; withinTier: TierCohesion[] };
   warnings: Warning[];
   /** % formula yang ikut dinilai kekuatannya */
   coverage: number;
@@ -119,7 +119,7 @@ export function analyze(
             onlyStock: opts.onlyStockBridges,
             totalScore: strength.totalScore,
           }),
-          withinTier: withinTierBridges(ctx, items, {
+          withinTier: tierCohesionReport(ctx, items, {
             onlyStock: opts.onlyStockBridges,
             totalScore: strength.totalScore,
           }),

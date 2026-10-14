@@ -319,12 +319,17 @@ export function crossTierBridges(
   });
 }
 
-export type WithinTierPair = {
+export type TierCohesion = {
   tier: Tier;
-  a: { lineId: string; name: string };
-  b: { lineId: string; name: string };
-  sim: number;
+  /** seberapa menyatu isi tier ini, 0..1 */
+  cohesion: number;
   status: BridgeStatus;
+  /**
+   * Bahan yang paling jauh dari arah tier — dibandingkan dengan gabungan
+   * bahan LAIN di tier itu, bukan dengan dirinya sendiri ikut dihitung.
+   * null kalau semuanya sudah menyatu.
+   */
+  outlier: { lineId: string; name: string; sim: number } | null;
   suggestions: BridgeSuggestion[];
 };
 
@@ -382,23 +387,46 @@ function lineVector(
  * Dibatasi 15 pasangan terlemah: formula 10 bahan punya 45 pasangan, dan
  * menampilkan semuanya mengubah panel saran jadi daftar yang tidak dibaca.
  */
-export function withinTierBridges(
+/**
+ * Kepaduan satu tier — menggantikan perbandingan antar PASANGAN bahan.
+ *
+ * Model pasangan tidak pernah selesai. Dengan n bahan ada n(n-1)/2 pasangan,
+ * dan tiap bridger yang ditambahkan menjadi bahan ke-(n+1) yang membentuk
+ * pasangan renggang baru dengan semua yang sudah ada. Makin dikerjakan makin
+ * panjang daftarnya — persis keluhan yang membuat fungsi ini ditulis ulang.
+ *
+ * Lebih penting lagi, model itu salah menilai: dua bahan yang BERBEDA bukan
+ * cacat. Mawar dan ozon memang tidak mirip, dan kontras itulah yang membuat
+ * sebuah accord menarik. Satu tier adalah satu accord, bukan kumpulan hubungan
+ * antar molekul.
+ *
+ * Pertanyaan yang benar: adakah bahan yang berdiri SENDIRIAN di luar arah tier
+ * ini. Itu satu angka per bahan, bukan n², dan menambahkan bridger menggeser
+ * arah tiernya sehingga angkanya membaik — jadi pekerjaannya selesai.
+ */
+export function tierCohesionReport(
   ctx: FormulaContext,
   items: ExpandedItem[],
-  opts: { onlyStock?: boolean; maxPairs?: number; totalScore?: number } = {},
-): WithinTierPair[] {
-  const { maxPairs = 15 } = opts;
+  opts: { onlyStock?: boolean; totalScore?: number } = {},
+): TierCohesion[] {
   const exclude = usedMaterialIds(items);
   const tiers: Tier[] = ctx.version.pyramid ? TIERS : ["all"];
-  const out: WithinTierPair[] = [];
+  const out: TierCohesion[] = [];
 
   for (const tier of tiers) {
     const lines = ctx.version.lines.filter(
       (l) => l.tier === tier && l.kind !== "fo",
     );
+    if (lines.length < 2) continue;
+
     const vectors = new Map(
-      lines.map((l) => [l.id, lineVector(ctx, l.id, items)]),
+      lines.map((l) => [l.id, lineVector(ctx, l.id, items)] as const),
     );
+    const scored = lines.filter(
+      (l) => Object.keys(vectors.get(l.id) ?? {}).length > 0,
+    );
+    if (scored.length < 2) continue;
+
     const nameOf = (lineId: string) => {
       const l = ctx.version.lines.find((x) => x.id === lineId)!;
       return l.kind === "accord"
@@ -406,34 +434,65 @@ export function withinTierBridges(
         : (ctx.materials.get(l.refId)?.name ?? "bahan");
     };
 
-    for (let i = 0; i < lines.length; i++) {
-      for (let j = i + 1; j < lines.length; j++) {
-        const va = vectors.get(lines[i].id)!;
-        const vb = vectors.get(lines[j].id)!;
-        if (!Object.keys(va).length || !Object.keys(vb).length) continue;
+    // Tiap bahan dibandingkan dengan gabungan bahan LAIN. Memasukkan dirinya
+    // sendiri ke pembanding membuat bahan yang porsinya besar selalu terlihat
+    // menyatu, dan yang kecil selalu terlihat menyimpang.
+    let worst: { lineId: string; name: string; sim: number } | null = null;
+    let total = 0;
 
-        const s = sim(va, vb);
-        const status = bridgeStatus(s, ctx.settings.bridgeThresholds);
-        if (status === "connected") continue;
+    for (const line of scored) {
+      const rest: FacetVector = {};
+      for (const other of scored) {
+        if (other.id === line.id) continue;
+        for (const [f, w] of Object.entries(vectors.get(other.id) ?? {})) {
+          rest[f] = (rest[f] ?? 0) + w;
+        }
+      }
 
-        out.push({
-          tier,
-          a: { lineId: lines[i].id, name: nameOf(lines[i].id) },
-          b: { lineId: lines[j].id, name: nameOf(lines[j].id) },
-          sim: s,
-          status,
-          // Jembatan antara dua bahan di tier yang sama masuk ke tier itu
-          // juga — memindahkannya ke tier lain tidak menyambung apa pun.
-          suggestions: suggestBridges(va, vb, ctx, exclude, {
-            ...opts,
-            forceTier: tier,
-          }),
-        });
+      const s = sim(vectors.get(line.id) ?? {}, normalizeL2(rest));
+      total += s;
+      if (!worst || s < worst.sim) {
+        worst = { lineId: line.id, name: nameOf(line.id), sim: s };
       }
     }
+
+    const cohesion = total / scored.length;
+    const status = bridgeStatus(cohesion, ctx.settings.bridgeThresholds);
+
+    // Hanya bahan yang benar-benar menyendiri yang ditawari jembatan. Kalau
+    // tiernya sudah menyatu, bahan "paling tidak mirip" tetap bukan masalah.
+    const needsHelp =
+      worst && bridgeStatus(worst.sim, ctx.settings.bridgeThresholds) === "gap";
+
+    const restOfTier: FacetVector = {};
+    if (needsHelp && worst) {
+      for (const other of scored) {
+        if (other.id === worst.lineId) continue;
+        for (const [f, w] of Object.entries(vectors.get(other.id) ?? {})) {
+          restOfTier[f] = (restOfTier[f] ?? 0) + w;
+        }
+      }
+    }
+
+    out.push({
+      tier,
+      cohesion,
+      status,
+      outlier: needsHelp ? worst : null,
+      suggestions:
+        needsHelp && worst
+          ? suggestBridges(
+              vectors.get(worst.lineId) ?? {},
+              normalizeL2(restOfTier),
+              ctx,
+              exclude,
+              { ...opts, forceTier: tier },
+            )
+          : [],
+    });
   }
 
-  return out.sort((a, b) => a.sim - b.sim).slice(0, maxPairs);
+  return out;
 }
 
 /** Vektor tier dari sebuah accord utuh — dipakai picker untuk pratinjau. */
