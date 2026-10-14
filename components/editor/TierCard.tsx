@@ -32,7 +32,7 @@ import {
 } from "@/components/ui/tooltip";
 import { fmtGram, fmtIdr, fmtNum, fmtPct } from "@/lib/calc/format";
 import type { Line, Material, Tier } from "@/lib/calc/types";
-import { PYRAMID_TIERS, TIER_META, parseDecimal } from "@/lib/tiers";
+import { PYRAMID_TIERS, TIER_META, facetColor, parseDecimal } from "@/lib/tiers";
 import { cn } from "@/lib/utils";
 
 export type LineView = {
@@ -41,6 +41,8 @@ export type LineView = {
   material: Material | null;
   /** jumlah bahan di dalamnya, kalau baris ini accord */
   accordSize?: number;
+  /** facet paling menentukan, untuk label sekilas di daftar */
+  facet: { key: string; label: string } | null;
   productPct: number;
   strengthPct: number | null;
   cost: number | null;
@@ -289,6 +291,25 @@ function LineRow({
                 </span>
               )}
             </>
+          )}
+          {/* Warnanya sengaja sama dengan pie Aroma: satu bahan punya satu
+              warna di seluruh aplikasi, jadi mata bisa menghubungkan baris di
+              sini dengan irisan di sana tanpa membaca namanya. */}
+          {view.facet && (
+            <span
+              className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium"
+              style={{
+                color: facetColor(view.facet.key),
+                backgroundColor: `color-mix(in oklab, ${facetColor(view.facet.key)} 14%, transparent)`,
+              }}
+            >
+              <span
+                aria-hidden
+                className="size-1.5 rounded-full"
+                style={{ backgroundColor: facetColor(view.facet.key) }}
+              />
+              {view.facet.label}
+            </span>
           )}
           {line.kind !== "accord" && (
             <DilutionPopover

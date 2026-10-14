@@ -166,3 +166,28 @@ export function normalizeL2(v: FacetVector): FacetVector {
   for (const [f, w] of Object.entries(v)) out[f] = w / len;
   return out;
 }
+
+/**
+ * Facet yang paling menentukan watak sebuah bahan.
+ *
+ * Satu kata, bukan daftar. Di daftar bahan yang panjang, satu label yang bisa
+ * dibaca sekilas jauh lebih berguna daripada vektor lengkap — dan vektor
+ * lengkapnya memang sudah ada di pie aroma.
+ *
+ * Seri diputuskan lewat abjad supaya label sebuah bahan tidak berubah-ubah
+ * antar render hanya karena urutan objeknya berbeda.
+ */
+export function dominantFacet(v: FacetVector): string | null {
+  let best: string | null = null;
+  let bestWeight = 0;
+
+  for (const [key, weight] of Object.entries(v)) {
+    if (weight <= 0) continue;
+    if (weight > bestWeight || (weight === bestWeight && best && key < best)) {
+      best = key;
+      bestWeight = weight;
+    }
+  }
+
+  return best;
+}

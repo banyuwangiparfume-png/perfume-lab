@@ -36,6 +36,7 @@ import { targetOf, tierSummary, useEditorStore } from "@/stores/editorStore";
 import { MaterialPicker, type PickResult } from "./MaterialPicker";
 import { PyramidInput } from "./PyramidInput";
 import { TierCard, type LineView } from "./TierCard";
+import { dominantFacet } from "@/lib/calc/aroma";
 
 const AUTOSAVE_MS = 2000;
 const ANALYZE_DEBOUNCE_MS = 150;
@@ -266,6 +267,31 @@ export function FormulaEditor(props: FormulaEditorProps) {
     [analysis.warnings],
   );
 
+  // Label facet dipakai dari tabel `facets`, bukan dari kunci mentahnya:
+  // "Musk / Animalic" lebih terbaca daripada "musk", dan labelnya hidup di satu
+  // tempat bersama pie aroma.
+  const facetLabelOf = new Map(
+    props.data.facets.map((f) => [f.key, f.label] as const),
+  );
+
+  const facetLabel = (v: Record<string, number>) => {
+    const key = dominantFacet(v);
+    if (!key) return null;
+    return { key, label: facetLabelOf.get(key) ?? key };
+  };
+
+  const sumFacets = (lines: { refId: string }[]) => {
+    const out: Record<string, number> = {};
+    for (const l of lines) {
+      const m = materialMap.get(l.refId);
+      if (!m) continue;
+      for (const [f, w] of Object.entries(m.facets)) {
+        out[f] = (out[f] ?? 0) + w;
+      }
+    }
+    return out;
+  };
+
   const viewFor = (line: Line): LineView => {
     const material =
       line.kind === "raw_material" ? (materialMap.get(line.refId) ?? null) : null;
@@ -281,6 +307,16 @@ export function FormulaEditor(props: FormulaEditorProps) {
         "(komponen tidak ditemukan)",
       material,
       accordSize: accord?.materialCount,
+      // Accord tidak punya facet sendiri — arahnya dijumlahkan dari isinya.
+      // FO sengaja tidak diberi label: isinya tidak diketahui, dan menebaknya
+      // akan membuat label itu berbohong.
+      facet: facetLabel(
+        material
+          ? material.facets
+          : accord
+            ? sumFacets(accord.lines)
+            : {},
+      ),
       productPct: calc?.productPct ?? 0,
       strengthPct: calc?.strengthPct ?? null,
       cost: calc?.cost ?? null,
