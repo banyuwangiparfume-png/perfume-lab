@@ -16,7 +16,7 @@ const LINKS = [
   { href: "/", label: "Dashboard" },
   { href: "/formulas", label: "Formula" },
   { href: "/materials", label: "Bahan" },
-  { href: "/fo", label: "FO" },
+  { href: "/stock", label: "Stok" },
   { href: "/admin/materials", label: "Admin" },
 ];
 

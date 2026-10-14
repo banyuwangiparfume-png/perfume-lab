@@ -52,6 +52,7 @@ export default async function AdminMaterialsPage() {
         <CardTitle>Master bahan</CardTitle>
         <MaterialsTable
           rows={materials.map((m) => ({
+            kind: "rm" as const,
             id: m.id,
             name: m.name,
             synonym: m.synonym,

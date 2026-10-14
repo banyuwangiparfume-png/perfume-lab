@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import {
   flexRender,
@@ -24,8 +24,20 @@ import { fmtIdr } from "@/lib/calc/format";
 import { FUNCTION_LABELS } from "@/lib/constants";
 import type { FunctionCategoryEnum } from "@/lib/supabase/database.types";
 import { cn } from "@/lib/utils";
+import { MoreHorizontal, Pencil, Star } from "lucide-react";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { toggleStock } from "@/app/actions/versions";
 
 export type MaterialRow = {
+  /** "fo" tidak punya impact, CAS, maupun kategori fungsi — kolomnya kosong */
+  kind: "rm" | "fo";
   id: string;
   name: string;
   synonym: string | null;
@@ -41,9 +53,14 @@ export type MaterialRow = {
   pricePerGram: number | null;
   priceTierG: number | null;
   isGlobal: boolean;
+  /** ada di stok saya */
+  inStock?: boolean;
 };
 
 const ALL = "all";
+
+const detailHref = (r: { kind: "rm" | "fo"; id: string }) =>
+  r.kind === "fo" ? `/fo/${r.id}` : `/materials/${r.id}`;
 
 export function MaterialsTable({
   rows,
@@ -58,6 +75,7 @@ export function MaterialsTable({
   const [family, setFamily] = useState(ALL);
   const [fn, setFn] = useState(ALL);
   const [impact, setImpact] = useState<string>(initialImpactFilter ?? ALL);
+  const [kind, setKind] = useState(ALL);
   const [sorting, setSorting] = useState<SortingState>([
     { id: "name", desc: false },
   ]);
@@ -65,6 +83,7 @@ export function MaterialsTable({
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return rows.filter((r) => {
+      if (kind !== ALL && r.kind !== kind) return false;
       if (family !== ALL && r.family !== family) return false;
       if (fn !== ALL && r.function_category !== fn) return false;
       if (impact === "yes" && r.effectiveImpact == null) return false;
@@ -74,7 +93,7 @@ export function MaterialsTable({
         .filter(Boolean)
         .some((v) => (v as string).toLowerCase().includes(q));
     });
-  }, [rows, search, family, fn, impact]);
+  }, [rows, search, family, fn, impact, kind]);
 
   const columns = useMemo<ColumnDef<MaterialRow>[]>(
     () => [
@@ -84,11 +103,16 @@ export function MaterialsTable({
         cell: ({ row }) => (
           <div className="min-w-0">
             <Link
-              href={`/materials/${row.original.id}`}
+              href={detailHref(row.original)}
               className="font-medium hover:text-[var(--brand)]"
             >
               {row.original.name}
             </Link>
+            {row.original.kind === "fo" && (
+              <span className="ml-1.5 rounded bg-[#f0ece2] px-1 py-0.5 text-[10px] font-semibold text-[#8a6d2f]">
+                FO
+              </span>
+            )}
             {row.original.synonym && (
               <p className="truncate text-[12px] text-[var(--text-subtle)]">
                 {row.original.synonym}
@@ -118,10 +142,10 @@ export function MaterialsTable({
                 menyamar jadi fakta begitu ditulis di tabel. */}
             {row.original.functionIsGuess && row.original.function_category && (
               <span
-                className="ml-1 text-[11px] text-[var(--text-subtle)]"
-                title="Ditebak dari family bahannya, bukan data supplier"
+                className="ml-1 rounded bg-[var(--surface-muted)] px-1 py-0.5 text-[10px] text-[var(--text-subtle)]"
+                title="Ditebak dari family bahannya, bukan data supplier. Koreksi di halaman detail bahan."
               >
-                ?
+                tebakan
               </span>
             )}
           </span>
@@ -167,6 +191,12 @@ export function MaterialsTable({
           </p>
         ),
       },
+      {
+        id: "actions",
+        header: "",
+        enableSorting: false,
+        cell: ({ row }) => <RowActions row={row.original} />,
+      },
     ],
     [],
   );
@@ -195,6 +225,17 @@ export function MaterialsTable({
             aria-label="Cari bahan"
           />
         </div>
+
+        <Select value={kind} onValueChange={setKind}>
+          <SelectTrigger className="w-[140px] bg-white" aria-label="Filter tipe">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL}>Semua tipe</SelectItem>
+            <SelectItem value="rm">Raw material</SelectItem>
+            <SelectItem value="fo">FO</SelectItem>
+          </SelectContent>
+        </Select>
 
         <Select value={family} onValueChange={setFamily}>
           <SelectTrigger className="w-[150px] bg-white" aria-label="Filter family">
@@ -332,5 +373,62 @@ export function MaterialsTable({
         </table>
       </div>
     </div>
+  );
+}
+
+
+/**
+ * Menu per baris.
+ *
+ * Isinya sengaja sedikit: yang sering dilakukan dari daftar cuma membuka
+ * bahannya dan menandai stok. Sisanya ada di halaman detail, tempat
+ * perubahannya bisa dilihat bersama konteksnya.
+ */
+function RowActions({ row }: { row: MaterialRow }) {
+  const [, start] = useTransition();
+  const [inStock, setInStock] = useState(!!row.inStock);
+
+  const toggle = () => {
+    const next = !inStock;
+    setInStock(next);
+    start(async () => {
+      const result = await toggleStock(row.id, next);
+      if (!result.ok) {
+        setInStock(!next);
+        toast.error(result.error);
+      }
+    });
+  };
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          aria-label={`Aksi untuk ${row.name}`}
+        >
+          <MoreHorizontal className="size-4" />
+        </Button>
+      </DropdownMenuTrigger>
+
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem asChild>
+          <Link href={detailHref(row)}>
+            <Pencil className="size-4" />
+            Buka & edit
+          </Link>
+        </DropdownMenuItem>
+
+        {/* FO tidak bisa ditandai stok: user_stock menyimpan raw_material_id. */}
+        {row.kind === "rm" && (
+          <DropdownMenuItem onSelect={toggle}>
+            <Star className="size-4" fill={inStock ? "currentColor" : "none"} />
+            {inStock ? "Hapus dari stok" : "Tandai punya stok"}
+          </DropdownMenuItem>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
