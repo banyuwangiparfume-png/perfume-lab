@@ -285,3 +285,26 @@ describe("bridger dalam tier", () => {
     }
   });
 });
+
+describe("tier kosong bukan jurang", () => {
+  it("pasangan dengan sisi kosong ditandai belum bisa dinilai", () => {
+    // Alur nyata: user mengisi Top dulu, Mid dan Base masih kosong. Melaporkan
+    // "Jurang 0%" di sana menyuruh memperbaiki transisi yang belum ada.
+    const ctx = fixtureContext();
+    ctx.version.lines = ctx.version.lines.filter((l) => l.tier === "top");
+    const result = analyze(ctx);
+
+    const topMid = result.bridges.crossTier.find(
+      (p) => p.pair[0] === "top" && p.pair[1] === "mid",
+    );
+    expect(topMid?.comparable).toBe(false);
+    expect(topMid?.suggestions).toHaveLength(0);
+  });
+
+  it("pasangan yang kedua sisinya terisi tetap dinilai seperti biasa", () => {
+    const result = analyze(fixtureContext());
+    for (const pair of result.bridges.crossTier) {
+      expect(pair.comparable).toBe(true);
+    }
+  });
+});

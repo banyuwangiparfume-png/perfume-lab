@@ -538,10 +538,26 @@ function BridgeTab({
                   {TIER_META[pair.pair[0]].label} ↔{" "}
                   {TIER_META[pair.pair[1]].label}
                 </span>
-                {badge(pair.status, pair.sim)}
+                {/* Tier kosong bukan jurang. Melabelinya "Jurang 0%" memberi
+                    tahu ada masalah pada transisi yang belum ada. */}
+                {pair.comparable ? (
+                  badge(pair.status, pair.sim)
+                ) : (
+                  <span className="rounded bg-[var(--surface-muted)] px-1.5 py-0.5 text-[11px] font-medium text-[var(--text-muted)]">
+                    Belum bisa dinilai
+                  </span>
+                )}
               </div>
 
-              <SuggestionList suggestions={pair.suggestions} onAdd={onAdd} />
+              {pair.comparable ? (
+                <SuggestionList suggestions={pair.suggestions} onAdd={onAdd} />
+              ) : (
+                <p className="mt-1 text-[11px] leading-relaxed text-[var(--text-subtle)]">
+                  Salah satu sisinya belum ada bahannya. Transisi baru bisa
+                  dinilai setelah kedua tier terisi — sementara itu, pakai
+                  bagian Dalam tier untuk memeriksa yang sudah ada.
+                </p>
+              )}
             </div>
           ))}
         </section>

@@ -228,6 +228,14 @@ export type TierBridge = {
   sim: number;
   status: BridgeStatus;
   suggestions: BridgeSuggestion[];
+  /**
+   * false kalau salah satu sisi belum punya bahan berfacet sama sekali.
+   *
+   * Tier kosong BUKAN jurang. Melaporkannya sebagai "Jurang 0%" memberi tahu
+   * ada masalah pada transisi yang belum ada — dan menyuruh memperbaiki sesuatu
+   * yang belum dibuat.
+   */
+  comparable: boolean;
 };
 
 /** Semua bahan yang sudah ada di formula — tidak disarankan ulang. */
@@ -287,16 +295,21 @@ export function crossTierBridges(
   ];
 
   return pairs.map(([x, y]) => {
+    const comparable =
+      Object.keys(vectors[x]).length > 0 && Object.keys(vectors[y]).length > 0;
     const s = sim(vectors[x], vectors[y]);
     const status = bridgeStatus(s, ctx.settings.bridgeThresholds);
+
     return {
       pair: [x, y],
       sim: s,
       status,
+      comparable,
       // Tier yang sehat tidak perlu saran — menampilkannya mengaburkan mana
-      // yang benar-benar perlu dikerjakan.
+      // yang benar-benar perlu dikerjakan. Tier yang masih kosong juga tidak:
+      // tidak ada arah yang bisa dijembatani, dan sarannya akan asal.
       suggestions:
-        status === "connected"
+        !comparable || status === "connected"
           ? []
           : suggestBridges(vectors[x], vectors[y], ctx, exclude, {
               ...opts,
@@ -329,16 +342,37 @@ function lineVector(
   }
   if (line.kind === "fo") return {};
 
+  // Accord: arah aromanya dibobot kekuatan isinya.
   const v: FacetVector = {};
+  let weighted = 0;
   for (const item of items) {
     if (item.sourceLineId !== lineId || item.kind !== "material") continue;
     const m = ctx.materials.get(item.refId);
     if (!m) continue;
     const s = strengthOf(item, m);
+    weighted += s;
     for (const [f, w] of Object.entries(m.facets)) {
       v[f] = (v[f] ?? 0) + s * w;
     }
   }
+
+  // Baris yang persennya masih 0 tidak punya kekuatan, jadi bobotnya nol dan
+  // arahnya hilang sama sekali. Padahal bahan yang baru ditambahkan justru
+  // itulah yang ingin dilihat: cocok atau tidak dengan yang sudah ada. Jadi
+  // kalau bobotnya nol, pakai facet isinya apa adanya.
+  if (weighted <= 0) {
+    const flat: FacetVector = {};
+    const sub = ctx.accords.get(line.refId);
+    for (const l of sub?.lines ?? []) {
+      const m = ctx.materials.get(l.refId);
+      if (!m) continue;
+      for (const [f, w] of Object.entries(m.facets)) {
+        flat[f] = (flat[f] ?? 0) + w;
+      }
+    }
+    return normalizeL2(flat);
+  }
+
   return normalizeL2(v);
 }
 
