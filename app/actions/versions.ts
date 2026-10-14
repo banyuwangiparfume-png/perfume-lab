@@ -348,28 +348,50 @@ export async function deleteVersion(versionId: string): Promise<ActionResult> {
   return ok();
 }
 
-/** Tandai bahan ada di stok sendiri — dipakai filter saran bridger. */
+/**
+ * Tandai bahan atau FO ada di stok sendiri.
+ *
+ * Dipakai tanda bintang di picker dan filter "hanya stok saya" saat mencari
+ * bridger. Keduanya menjawab pertanyaan yang sama — apakah botolnya ada di rak
+ * — jadi FO tidak boleh diperlakukan berbeda.
+ */
 export async function toggleStock(
-  materialId: string,
+  id: string,
   inStock: boolean,
+  kind: "rm" | "fo" = "rm",
 ): Promise<ActionResult> {
   const db = getDb();
   const ownerId = await getOwnerId();
-
-  const { error } = inStock
-    ? await db
-        .from("user_stock")
-        .upsert(
-          { owner_id: ownerId, raw_material_id: materialId },
-          { onConflict: "owner_id,raw_material_id" },
-        )
-    : await db
-        .from("user_stock")
-        .delete()
-        .eq("owner_id", ownerId)
-        .eq("raw_material_id", materialId);
+  // Dua cabang ditulis terpisah, bukan satu objek berkunci dinamis: tipe
+  // tabelnya menolak kunci yang baru diketahui saat runtime.
+  const error = inStock
+    ? kind === "fo"
+      ? (
+          await db
+            .from("user_stock")
+            .upsert(
+              { owner_id: ownerId, fragrance_oil_id: id },
+              { onConflict: "owner_id,fragrance_oil_id" },
+            )
+        ).error
+      : (
+          await db
+            .from("user_stock")
+            .upsert(
+              { owner_id: ownerId, raw_material_id: id },
+              { onConflict: "owner_id,raw_material_id" },
+            )
+        ).error
+    : (
+        await db
+          .from("user_stock")
+          .delete()
+          .eq("owner_id", ownerId)
+          .eq(kind === "fo" ? "fragrance_oil_id" : "raw_material_id", id)
+      ).error;
 
   if (error) return fail(describeDbError(error));
   revalidatePath("/materials");
+  revalidatePath("/stock");
   return ok();
 }

@@ -36,8 +36,11 @@ import {
 import { toggleStock } from "@/app/actions/versions";
 
 export type MaterialRow = {
-  /** "fo" tidak punya impact, CAS, maupun kategori fungsi — kolomnya kosong */
-  kind: "rm" | "fo";
+  /**
+   * "fo" tidak punya impact, CAS, maupun kategori fungsi.
+   * "accord" adalah versi tersimpan dari formula sendiri, bukan bahan beli.
+   */
+  kind: "rm" | "fo" | "accord";
   id: string;
   name: string;
   synonym: string | null;
@@ -55,12 +58,22 @@ export type MaterialRow = {
   isGlobal: boolean;
   /** ada di stok saya */
   inStock?: boolean;
+  /** khusus accord: formula asalnya, untuk membuka versinya */
+  accordFormulaId?: string | null;
 };
 
 const ALL = "all";
 
-const detailHref = (r: { kind: "rm" | "fo"; id: string }) =>
-  r.kind === "fo" ? `/fo/${r.id}` : `/materials/${r.id}`;
+const detailHref = (r: {
+  kind: "rm" | "fo" | "accord";
+  id: string;
+  accordFormulaId?: string | null;
+}) =>
+  r.kind === "fo"
+    ? `/fo/${r.id}`
+    : r.kind === "accord"
+      ? `/formulas/${r.accordFormulaId}?v=${r.id}`
+      : `/materials/${r.id}`;
 
 export function MaterialsTable({
   rows,
@@ -111,6 +124,11 @@ export function MaterialsTable({
             {row.original.kind === "fo" && (
               <span className="ml-1.5 rounded bg-[#f0ece2] px-1 py-0.5 text-[10px] font-semibold text-[#8a6d2f]">
                 FO
+              </span>
+            )}
+            {row.original.kind === "accord" && (
+              <span className="ml-1.5 rounded bg-[var(--brand-soft)] px-1 py-0.5 text-[10px] font-semibold text-[var(--brand)]">
+                ACCORD
               </span>
             )}
             {row.original.synonym && (
@@ -234,6 +252,7 @@ export function MaterialsTable({
             <SelectItem value={ALL}>Semua tipe</SelectItem>
             <SelectItem value="rm">Raw material</SelectItem>
             <SelectItem value="fo">FO</SelectItem>
+            <SelectItem value="accord">Accord saya</SelectItem>
           </SelectContent>
         </Select>
 
@@ -392,7 +411,11 @@ function RowActions({ row }: { row: MaterialRow }) {
     const next = !inStock;
     setInStock(next);
     start(async () => {
-      const result = await toggleStock(row.id, next);
+      const result = await toggleStock(
+        row.id,
+        next,
+        row.kind === "fo" ? "fo" : "rm",
+      );
       if (!result.ok) {
         setInStock(!next);
         toast.error(result.error);
@@ -421,8 +444,8 @@ function RowActions({ row }: { row: MaterialRow }) {
           </Link>
         </DropdownMenuItem>
 
-        {/* FO tidak bisa ditandai stok: user_stock menyimpan raw_material_id. */}
-        {row.kind === "rm" && (
+        {/* Accord tidak punya stok sendiri: dia dibuat dari bahan lain. */}
+        {row.kind !== "accord" && (
           <DropdownMenuItem onSelect={toggle}>
             <Star className="size-4" fill={inStock ? "currentColor" : "none"} />
             {inStock ? "Hapus dari stok" : "Tandai punya stok"}

@@ -360,10 +360,16 @@ async function fetchBridgeRules(
 async function fetchStock(db: Db, ownerId: string): Promise<Set<string>> {
   const { data, error } = await db
     .from("user_stock")
-    .select("raw_material_id")
+    .select("raw_material_id, fragrance_oil_id")
     .eq("owner_id", ownerId);
   if (error) throw new Error(`Gagal memuat stok: ${error.message}`);
-  return new Set((data ?? []).map((r) => r.raw_material_id));
+  // Raw material dan FO dalam satu himpunan: id-nya acak dan pertanyaannya
+  // sama — ada di rak atau tidak.
+  return new Set(
+    (data ?? [])
+      .flatMap((r) => [r.raw_material_id, r.fragrance_oil_id])
+      .filter((v): v is string => !!v),
+  );
 }
 
 async function fetchSettings(db: Db, ownerId: string) {

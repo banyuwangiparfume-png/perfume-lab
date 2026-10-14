@@ -11,20 +11,37 @@ import { fetchAllPages } from "./paginate";
  * saat mencari bridger. Saran yang bahannya harus dibeli dulu tidak bisa
  * dicoba malam itu juga — dan saran yang tidak bisa dicoba tidak membantu.
  */
-export async function listStock(): Promise<Set<string>> {
+export type Stock = {
+  /** id raw material yang ada di rak */
+  materials: Set<string>;
+  /** id FO yang ada di rak */
+  fos: Set<string>;
+};
+
+export async function listStock(): Promise<Stock> {
   const db = getDb();
   const ownerId = await getOwnerId();
 
-  const rows = await fetchAllPages<{ raw_material_id: string }>(
+  const rows = await fetchAllPages<{
+    raw_material_id: string | null;
+    fragrance_oil_id: string | null;
+  }>(
     (from, to) =>
       db
         .from("user_stock")
-        .select("raw_material_id")
+        .select("raw_material_id, fragrance_oil_id")
         .eq("owner_id", ownerId)
-        .order("raw_material_id")
+        .order("id")
         .range(from, to),
     "stok",
   );
 
-  return new Set(rows.map((r) => r.raw_material_id));
+  return {
+    materials: new Set(
+      rows.map((r) => r.raw_material_id).filter((v): v is string => !!v),
+    ),
+    fos: new Set(
+      rows.map((r) => r.fragrance_oil_id).filter((v): v is string => !!v),
+    ),
+  };
 }

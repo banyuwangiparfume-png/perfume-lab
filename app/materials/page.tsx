@@ -2,6 +2,7 @@ import { Beaker } from "lucide-react";
 import { MaterialsTable } from "@/components/materials/MaterialsTable";
 import { EmptyState, PageHeader } from "@/components/shared/primitives";
 import { listFragranceOils } from "@/lib/data/fragrance-oils";
+import { listAccordsForPicker } from "@/lib/data/versions";
 import { listFamilies, listMaterials } from "@/lib/data/materials";
 import { listStock } from "@/lib/data/stock";
 
@@ -17,9 +18,10 @@ export default async function MaterialsPage({
   // FO ikut ditampilkan di sini supaya master bahan cuma satu daftar. Keduanya
   // sama-sama "sesuatu yang bisa dimasukkan ke formula"; memisahkannya ke dua
   // halaman memaksa user mengingat di mana sebuah nama disimpan.
-  const [materials, fos, families, stock] = await Promise.all([
+  const [materials, fos, accords, families, stock] = await Promise.all([
     listMaterials(),
     listFragranceOils(),
+    listAccordsForPicker(),
     listFamilies(),
     listStock(),
   ]);
@@ -41,7 +43,7 @@ export default async function MaterialsPage({
       pricePerGram: m.pricePerGram,
       priceTierG: m.priceTierG,
       isGlobal: m.owner_id == null,
-      inStock: stock.has(m.id),
+      inStock: stock.materials.has(m.id),
     })),
     ...fos.map((f) => ({
       kind: "fo" as const,
@@ -61,8 +63,33 @@ export default async function MaterialsPage({
       pricePerGram: f.price_per_gram == null ? null : Number(f.price_per_gram),
       priceTierG: null,
       isGlobal: false,
-      inStock: false,
+      inStock: stock.fos.has(f.id),
     })),
+    // Accord yang sudah punya versi tersimpan ikut masuk master: begitu
+    // dibekukan, dia jadi bahan yang bisa dipanggil formula lain — persis
+    // seperti bahan beli. Hanya versi tersimpan, tidak pernah draf: draf
+    // berubah tiap detik, dan formula yang memakainya ikut berubah tanpa
+    // pemiliknya sadar.
+    ...accords
+      .filter((a) => a.disabledReason == null)
+      .map((a) => ({
+        kind: "accord" as const,
+        id: a.versionId,
+        accordFormulaId: a.formulaId,
+        name: a.label,
+        synonym: `${a.materialCount} bahan penyusun`,
+        cas_number: null,
+        family: null,
+        function_category: null as never,
+        odour_profile: null,
+        effectiveImpact: null,
+        odor_impact: null,
+        odor_impact_note: null,
+        pricePerGram: null,
+        priceTierG: null,
+        isGlobal: false,
+        inStock: false,
+      })),
   ].sort((a, b) => a.name.localeCompare(b.name, "id"));
 
   const foFamilies = fos.map((f) => f.family).filter(Boolean) as string[];

@@ -84,7 +84,10 @@ export async function loadEditorData(formulaId: string): Promise<EditorData> {
         .from("bridge_rules")
         .select("id, raw_material_id, facet_a, facet_b, note, source")
         .or(`owner_id.is.null,owner_id.eq.${ownerId}`),
-      db.from("user_stock").select("raw_material_id").eq("owner_id", ownerId),
+      db
+        .from("user_stock")
+        .select("raw_material_id, fragrance_oil_id")
+        .eq("owner_id", ownerId),
       db
         .from("app_settings")
         .select("settings")
@@ -209,7 +212,11 @@ export async function loadEditorData(formulaId: string): Promise<EditorData> {
       note: r.note,
       source: r.source,
     })),
-    stock: (stockRes.data ?? []).map((s) => s.raw_material_id),
+    // Satu himpunan untuk raw material DAN FO. Keduanya id acak, jadi tidak
+    // mungkin bentrok, dan pemakainya cuma bertanya "ada di rak atau tidak".
+    stock: (stockRes.data ?? [])
+      .flatMap((s) => [s.raw_material_id, s.fragrance_oil_id])
+      .filter((v): v is string => !!v),
     settings: mergeSettings(
       (settingsRes.data?.settings ?? null) as Parameters<
         typeof mergeSettings

@@ -11,6 +11,7 @@ import { FUNCTION_LABELS } from "@/lib/calc/functions";
 import { cn } from "@/lib/utils";
 
 export type StockRow = {
+  kind: "rm" | "fo";
   id: string;
   name: string;
   synonym: string | null;
@@ -49,7 +50,7 @@ export function StockManager({ rows }: { rows: StockRow[] }) {
     const willBeInStock = !stock.has(row.id);
     start(async () => {
       setStock(row.id);
-      const result = await toggleStock(row.id, willBeInStock);
+      const result = await toggleStock(row.id, willBeInStock, row.kind);
       if (!result.ok) toast.error(result.error);
     });
   };
@@ -151,6 +152,11 @@ export function StockManager({ rows }: { rows: StockRow[] }) {
 
                   <td className="px-3 py-2">
                     <span className="font-medium">{row.name}</span>
+                    {row.kind === "fo" && (
+                      <span className="ml-1.5 rounded bg-[#f0ece2] px-1 py-0.5 text-[10px] font-semibold text-[#8a6d2f]">
+                        FO
+                      </span>
+                    )}
                     {row.synonym && (
                       <p className="truncate text-[12px] text-[var(--text-subtle)]">
                         {row.synonym}

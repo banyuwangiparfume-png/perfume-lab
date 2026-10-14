@@ -1009,20 +1009,33 @@ export type Database = {
       user_stock: {
         Row: {
           created_at: string
+          fragrance_oil_id: string | null
+          id: string
           owner_id: string
-          raw_material_id: string
+          raw_material_id: string | null
         }
         Insert: {
           created_at?: string
+          fragrance_oil_id?: string | null
+          id?: string
           owner_id: string
-          raw_material_id: string
+          raw_material_id?: string | null
         }
         Update: {
           created_at?: string
+          fragrance_oil_id?: string | null
+          id?: string
           owner_id?: string
-          raw_material_id?: string
+          raw_material_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "user_stock_fragrance_oil_id_fkey"
+            columns: ["fragrance_oil_id"]
+            isOneToOne: false
+            referencedRelation: "fragrance_oils"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "user_stock_owner_id_fkey"
             columns: ["owner_id"]
