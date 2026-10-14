@@ -524,8 +524,14 @@ export function FormulaEditor(props: FormulaEditorProps) {
       )}
       {error && <Notice tone="danger">{error}</Notice>}
 
-      {/* ---------------- dua kolom ---------------- */}
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
+      {/*
+        ---------------- dua kolom ----------------
+        Dulu baru jadi dua kolom di xl (1280px). Laptop dengan skala Windows
+        150% punya lebar 1280 dikurangi scrollbar — selisih belasan piksel itu
+        membuat panel analisa jatuh ke bawah piramida, dan setiap ubah persen
+        harus discroll untuk melihat efeknya. Sekarang mulai dari lg (1024px).
+      */}
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)] xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
         <div className="space-y-4">
           {props.pyramidMode && store.pyramid && (
             <details className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
@@ -584,8 +590,14 @@ export function FormulaEditor(props: FormulaEditorProps) {
           </p>
         </div>
 
-        <aside className="xl:sticky xl:top-20 xl:self-start">
-          <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-[var(--shadow-card)]">
+        {/*
+          Panel menempel di layar dan punya scroll sendiri. Tanpa batas tinggi,
+          tab yang panjang (Bridger, Per fase) membuat ujung bawahnya tidak
+          pernah bisa dicapai selama dia menempel — dan halaman harus discroll
+          jauh melewati piramida.
+        */}
+        <aside className="lg:sticky lg:top-20 lg:self-start">
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-[var(--shadow-card)] lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto lg:overscroll-contain">
             <AnalysisPanel
               analysis={analysis}
               context={context}

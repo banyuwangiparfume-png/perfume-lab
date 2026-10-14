@@ -259,9 +259,13 @@ function LineRow({
   const shown = draft ?? String(line.pct);
 
   return (
+    // Satu baris penuh butuh ±640px. Patokannya lebar KARTU, bukan lebar
+    // layar: sejak panel analisa menempel di samping mulai 1024px, kartu tier
+    // bisa lebih sempit dari itu walau layarnya lebar — dan baris yang
+    // dipaksa satu baris akan meluber keluar kartu.
     <div
       className={cn(
-        "flex flex-wrap items-center gap-2 rounded-lg px-2 py-2 transition-colors sm:flex-nowrap",
+        "flex flex-wrap items-center gap-2 rounded-lg px-2 py-2 transition-colors @[42rem]:flex-nowrap",
         highlighted && "bg-[var(--warn-soft)]",
       )}
     >
@@ -428,7 +432,7 @@ export function TierCard({
   const meta = TIER_META[tier];
 
   return (
-    <section className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)] shadow-[var(--shadow-card)]">
+    <section className="@container overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)] shadow-[var(--shadow-card)]">
       <header
         className="flex flex-wrap items-center gap-2 border-l-4 px-4 py-3"
         style={{ borderLeftColor: meta.color, backgroundColor: meta.soft }}

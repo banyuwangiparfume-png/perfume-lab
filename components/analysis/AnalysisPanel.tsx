@@ -718,6 +718,7 @@ function BridgeTab({
   onAdd?: (materialId: string, tier: Tier, dose: number) => void;
 }) {
   const { crossTier, withinTier } = analysis.bridges;
+  const [view, setView] = useState<"antar" | "kepaduan">("antar");
 
   if (!crossTier.length && !withinTier.length) {
     return (
@@ -750,12 +751,70 @@ function BridgeTab({
     </span>
   );
 
+  // Status terburuk tiap bagian, supaya masalah di sub-tab yang sedang tidak
+  // dibuka tetap kelihatan dari labelnya.
+  const RANK = { connected: 0, loose: 1, gap: 2 } as const;
+  const worst = (list: BridgeStatus[]): BridgeStatus | null =>
+    list.length
+      ? list.reduce((a, b) => (RANK[b] > RANK[a] ? b : a))
+      : null;
+  const crossWorst = worst(
+    crossTier.filter((p) => p.comparable).map((p) => p.status),
+  );
+  const withinWorst = worst(withinTier.map((t) => t.status));
+  const dotColor = {
+    connected: "var(--ok)",
+    loose: "var(--warn)",
+    gap: "var(--danger)",
+  } as const;
+  const dot = (s: BridgeStatus | null) =>
+    s && (
+      <span
+        aria-hidden
+        className="ml-1.5 inline-block size-1.5 rounded-full"
+        style={{ backgroundColor: dotColor[s] }}
+      />
+    );
+
   return (
-    <div className="space-y-5">
+    <div className="space-y-3">
+      {/*
+        Dua pertanyaan yang berbeda — sambungan antar lapisan, dan kepaduan
+        isi tiap lapisan — dipisah ke sub-tab. Ditumpuk, bagian kedua selalu
+        jatuh jauh di bawah dan harus discroll setiap kali dicek.
+      */}
+      <Tabs
+        value={view}
+        onValueChange={(v) => setView(v as "antar" | "kepaduan")}
+      >
+        <TabsList className="w-full">
+          <TabsTrigger value="antar">
+            Antar tier
+            {dot(crossWorst)}
+          </TabsTrigger>
+          <TabsTrigger value="kepaduan">
+            Kepaduan tier
+            {dot(withinWorst)}
+          </TabsTrigger>
+        </TabsList>
+      </Tabs>
+
+      {view === "antar" && !crossTier.length && (
+        <p className="text-[13px] text-[var(--text-muted)]">
+          Sambungan antar tier baru bisa dinilai setelah mode piramida aktif dan
+          minimal dua tier terisi.
+        </p>
+      )}
+      {view === "kepaduan" && !withinTier.length && (
+        <p className="text-[13px] text-[var(--text-muted)]">
+          Kepaduan baru bisa dinilai setelah ada tier yang berisi minimal dua
+          bahan dengan data facet.
+        </p>
+      )}
+
       {/* ---------------------------- antar tier ---------------------------- */}
-      {crossTier.length > 0 && (
+      {view === "antar" && crossTier.length > 0 && (
         <section className="space-y-2.5">
-          <h4 className="text-[13px] font-semibold">Antar tier</h4>
 
           {crossTier.map((pair) => (
             <div
@@ -784,7 +843,7 @@ function BridgeTab({
                 <p className="mt-1 text-[11px] leading-relaxed text-[var(--text-subtle)]">
                   Salah satu sisinya belum ada bahannya. Transisi baru bisa
                   dinilai setelah kedua tier terisi — sementara itu, pakai
-                  bagian Dalam tier untuk memeriksa yang sudah ada.
+                  sub-tab Kepaduan tier untuk memeriksa yang sudah ada.
                 </p>
               )}
             </div>
@@ -793,10 +852,9 @@ function BridgeTab({
       )}
 
       {/* ---------------------------- dalam tier ---------------------------- */}
-      {withinTier.length > 0 && (
+      {view === "kepaduan" && withinTier.length > 0 && (
         <section className="space-y-2.5">
           <div>
-            <h4 className="text-[13px] font-semibold">Kepaduan tier</h4>
             {/*
               Dulu bagian ini membandingkan tiap PASANGAN bahan. Itu tidak
               pernah selesai — tiap bridger yang ditambahkan jadi bahan baru
