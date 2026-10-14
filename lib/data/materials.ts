@@ -5,6 +5,7 @@ import { PRICING } from "../constants";
 import { getOwnerId } from "../owner";
 import { getDb } from "../supabase/db";
 import { fetchAllPages } from "./paginate";
+import { suggestFunctionCategory, type FunctionSource } from "../calc/functions";
 import type {
   FunctionCategoryEnum,
   RawMaterialRow,
@@ -18,6 +19,11 @@ export type MaterialWithPrices = RawMaterialRow & {
 export type MaterialListItem = MaterialWithPrices & {
   /** odor_impact_override ?? odor_impact — boleh null */
   effectiveImpact: number | null;
+  /** koreksi user ?? data supplier ?? tebakan dari family */
+  effectiveFunctionCategory: string | null;
+  /** dari mana nilai di atas berasal */
+  functionSource: FunctionSource;
+  effectiveNoteTierHint: string | null;
   pricePerGram: number | null;
   priceTierG: number | null;
 };
@@ -34,11 +40,34 @@ export const effectiveImpact = (m: {
       ? Number(m.odor_impact)
       : null;
 
+/**
+ * Kategori fungsi efektif: koreksi user, lalu data supplier, lalu tebakan dari
+ * family. Sama persis dengan yang dipakai editor — kalau halaman Bahan memakai
+ * kolom mentah, satu bahan bisa tampil "fixative" di sini dan "diffuser" di
+ * panel analisa.
+ */
+export const effectiveFunction = (m: {
+  function_category: string | null;
+  function_category_override: string | null;
+  family: string | null;
+}): { value: string | null; source: FunctionSource } => {
+  if (m.function_category_override)
+    return { value: m.function_category_override, source: "user" };
+  if (m.function_category)
+    return { value: m.function_category, source: "supplier" };
+  return { value: suggestFunctionCategory(m.family), source: "derived" };
+};
+
 function decorate(m: MaterialWithPrices): MaterialListItem {
   const picked = pickPrice(m.prices, PRICING.preferredTierG);
+  const fn = effectiveFunction(m);
   return {
     ...m,
     effectiveImpact: effectiveImpact(m),
+    effectiveFunctionCategory: fn.value,
+    functionSource: fn.source,
+    effectiveNoteTierHint:
+      m.note_tier_hint_override ?? m.note_tier_hint ?? null,
     pricePerGram: picked?.pricePerGram ?? null,
     priceTierG: picked?.tierGrams ?? null,
   };

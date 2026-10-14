@@ -32,6 +32,8 @@ export type MaterialRow = {
   cas_number: string | null;
   family: string | null;
   function_category: FunctionCategoryEnum | null;
+  /** kategorinya ditebak dari family, bukan data supplier */
+  functionIsGuess?: boolean;
   odour_profile: string | null;
   effectiveImpact: number | null;
   odor_impact: number | null;
@@ -112,6 +114,16 @@ export function MaterialsTable({
             {row.original.function_category
               ? FUNCTION_LABELS[row.original.function_category]
               : "—"}
+            {/* Tebakan harus bisa dibedakan dari data, kalau tidak dia
+                menyamar jadi fakta begitu ditulis di tabel. */}
+            {row.original.functionIsGuess && row.original.function_category && (
+              <span
+                className="ml-1 text-[11px] text-[var(--text-subtle)]"
+                title="Ditebak dari family bahannya, bukan data supplier"
+              >
+                ?
+              </span>
+            )}
           </span>
         ),
       },
