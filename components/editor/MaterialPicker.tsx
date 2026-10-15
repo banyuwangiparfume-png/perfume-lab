@@ -203,6 +203,22 @@ export function MaterialPicker({
           <CommandInput
             value={query}
             onValueChange={setQuery}
+            onKeyDown={(e) => {
+              // Enter saat tidak ada hasil sama sekali = buat bahan baru.
+              // Kalau ada hasil, Enter tetap memilih yang disorot.
+              if (
+                e.key === "Enter" &&
+                tab === "material" &&
+                onCreated &&
+                query.trim() &&
+                !e.currentTarget
+                  .closest("[cmdk-root]")
+                  ?.querySelector("[cmdk-item]")
+              ) {
+                e.preventDefault();
+                setCreating(query.trim());
+              }
+            }}
             placeholder={
               tab === "material"
                 ? "Cari nama, sinonim, atau CAS…"
@@ -286,25 +302,6 @@ export function MaterialPicker({
               </CommandGroup>
             )}
 
-            {/* Selalu ada di ujung daftar, bukan cuma saat hasilnya kosong:
-                nama yang mirip ("Nagarmotha" vs "Cypriol / Nagarmotha") bisa
-                muncul padahal bahan yang dicari memang belum ada. */}
-            {tab === "material" && onCreated && (
-              <CommandGroup>
-                <CommandItem
-                  value="__new_material"
-                  keywords={[query]}
-                  onSelect={() => setCreating(query.trim())}
-                  className="gap-2 py-2.5 font-medium text-[var(--cta)]"
-                >
-                  <Plus className="size-4" />
-                  {query.trim()
-                    ? `Buat bahan baru “${query.trim()}”`
-                    : "Buat bahan baru"}
-                </CommandItem>
-              </CommandGroup>
-            )}
-
             {tab === "accord" && (
               <CommandGroup>
                 {accords.map((a) => (
@@ -376,6 +373,33 @@ export function MaterialPicker({
             )}
           </CommandList>
         </Command>
+
+        {/*
+          Tombol biasa di LUAR daftar hasil, bukan baris di dalamnya. Sebagai
+          baris, dia ikut disaring pencarian — dan cmdk mengunci kata kuncinya
+          saat baris pertama muncul (kolom cari masih kosong), jadi begitu
+          nama diketik, barisnya hilang tepat saat dibutuhkan.
+
+          Selalu tampil, bukan cuma saat hasil kosong: nama yang mirip bisa
+          muncul padahal bahan yang dicari memang belum ada.
+        */}
+        {tab === "material" && onCreated && (
+          <div className="border-t border-[var(--border)] px-5 py-2.5">
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full justify-start"
+              onClick={() => setCreating(query.trim())}
+            >
+              <Plus className="size-4" />
+              <span className="truncate">
+                {query.trim()
+                  ? `Buat bahan baru “${query.trim()}”`
+                  : "Buat bahan baru"}
+              </span>
+            </Button>
+          </div>
+        )}
           </>
         )}
 
