@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Save, Undo2 } from "lucide-react";
 import { toast } from "sonner";
+import type { CreatedMaterial } from "@/app/actions/materials";
 import { saveDraft, saveVersion } from "@/app/actions/versions";
 import { AnalysisPanel } from "@/components/analysis/AnalysisPanel";
 import { Notice } from "@/components/shared/primitives";
@@ -91,13 +92,29 @@ export function FormulaEditor(props: FormulaEditorProps) {
 
   const ready = store.versionId === props.versionId;
 
+  // Bahan yang baru dibuat dari picker. Ditahan di sini supaya baris yang
+  // memakainya langsung terhitung, tanpa menunggu muat ulang data server —
+  // dan tetap aman setelah muat ulang itu datang, karena id-nya sama.
+  const [created, setCreated] = useState<CreatedMaterial[]>([]);
+  const allMaterials = useMemo(() => {
+    const known = new Set(props.data.materials.map((m) => m.id));
+    return [
+      ...props.data.materials,
+      ...created.filter((c) => !known.has(c.id)).map((c) => c.material),
+    ];
+  }, [props.data.materials, created]);
+
   const materialMap = useMemo(
-    () => new Map(props.data.materials.map((m) => [m.id, m] as const)),
-    [props.data.materials],
+    () => new Map(allMaterials.map((m) => [m.id, m] as const)),
+    [allMaterials],
   );
   const metaMap = useMemo(
-    () => new Map(Object.entries(props.meta)),
-    [props.meta],
+    () =>
+      new Map([
+        ...Object.entries(props.meta),
+        ...created.map((c) => [c.id, c.meta] as const),
+      ]),
+    [props.meta, created],
   );
   const stockSet = useMemo(
     () => new Set(props.data.stock),
@@ -614,7 +631,7 @@ export function FormulaEditor(props: FormulaEditorProps) {
           open
           onOpenChange={(o) => !o && setPickerTier(null)}
           tier={pickerTier}
-          materials={props.data.materials}
+          materials={allMaterials}
           meta={metaMap}
           accords={props.data.accords}
           fos={props.data.fos}
@@ -624,6 +641,12 @@ export function FormulaEditor(props: FormulaEditorProps) {
           batchG={store.batchG}
           priceTierOverride={store.priceTierOverride}
           onPick={addPick(pickerTier)}
+          onCreated={(c) => {
+            setCreated((list) => [...list, c]);
+            toast.success(`${c.material.name} masuk master bahan.`);
+            // Halaman Bahan dan picker di formula lain ikut tahu.
+            router.refresh();
+          }}
         />
       )}
 

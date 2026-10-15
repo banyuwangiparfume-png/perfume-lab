@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Check, Plus } from "lucide-react";
+import { ArrowLeft, Check, Plus } from "lucide-react";
+import { NewMaterialForm } from "@/components/materials/NewMaterialForm";
 import { ImpactBadge } from "@/components/shared/ImpactBadge";
 import { Button } from "@/components/ui/button";
 import {
@@ -23,6 +24,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { fmtIdr, fmtNum } from "@/lib/calc/format";
 import { pickTier, pricePerUnit } from "@/lib/calc/price";
 import type { Material, Settings, Tier } from "@/lib/calc/types";
+import type { CreatedMaterial } from "@/app/actions/materials";
 import type { AccordOption } from "@/lib/data/versions";
 import type { MaterialMeta } from "@/lib/data/loadEditorData";
 import { TIER_META, facetColor } from "@/lib/tiers";
@@ -72,6 +74,7 @@ export function MaterialPicker({
   batchG,
   priceTierOverride,
   onPick,
+  onCreated,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -86,9 +89,18 @@ export function MaterialPicker({
   batchG: number;
   priceTierOverride: number | null;
   onPick: (pick: PickResult) => void;
+  /**
+   * Bahan baru dibuat dari sini. Editor perlu bahan itu di daftarnya SEBELUM
+   * baris ditambahkan — kalau tidak, analisa menghitung baris yang bahannya
+   * belum dikenal.
+   */
+  onCreated?: (created: CreatedMaterial) => void;
 }) {
   const [tab, setTab] = useState<"material" | "accord" | "fo">("material");
   const [onlyStock, setOnlyStock] = useState(false);
+  const [query, setQuery] = useState("");
+  // Nama awal bahan yang sedang dibuat; null = mode cari biasa.
+  const [creating, setCreating] = useState<string | null>(null);
 
   const tierKey = pickTier(batchG, settings, priceTierOverride);
 
@@ -109,10 +121,41 @@ export function MaterialPicker({
       <DialogContent className="max-h-[85dvh] max-w-[680px] gap-3 overflow-hidden p-0">
         <DialogHeader className="px-5 pt-5">
           <DialogTitle>
-            Tambah ke {TIER_META[tier].label}
+            {creating != null
+              ? "Bahan baru"
+              : `Tambah ke ${TIER_META[tier].label}`}
           </DialogTitle>
-          <DialogDescription>{TIER_META[tier].hint}</DialogDescription>
+          <DialogDescription>
+            {creating != null
+              ? `Masuk ke master bahan, lalu langsung ditambahkan ke ${TIER_META[tier].label}.`
+              : TIER_META[tier].hint}
+          </DialogDescription>
         </DialogHeader>
+
+        {creating != null && onCreated ? (
+          <div className="overflow-y-auto px-5 pb-5">
+            <button
+              type="button"
+              onClick={() => setCreating(null)}
+              className="mb-3 flex items-center gap-1 text-[12px] font-medium text-[var(--text-muted)]"
+            >
+              <ArrowLeft className="size-3.5" />
+              Kembali ke pencarian
+            </button>
+            <NewMaterialForm
+              initialName={creating}
+              submitLabel={`Simpan & tambah ke ${TIER_META[tier].label}`}
+              onCancel={() => setCreating(null)}
+              onCreated={(created) => {
+                onCreated(created);
+                onPick({ kind: "raw_material", refId: created.id });
+                setCreating(null);
+                close();
+              }}
+            />
+          </div>
+        ) : (
+          <>
 
         <div className="flex items-center gap-3 px-5">
           <Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)}>
@@ -158,6 +201,8 @@ export function MaterialPicker({
           }
         >
           <CommandInput
+            value={query}
+            onValueChange={setQuery}
             placeholder={
               tab === "material"
                 ? "Cari nama, sinonim, atau CAS…"
@@ -170,7 +215,7 @@ export function MaterialPicker({
           <CommandList className="max-h-[48vh]">
             <CommandEmpty>
               {tab === "material"
-                ? "Tidak ada bahan yang cocok. Kalau master bahan masih kosong, impor pricelist dulu di Admin."
+                ? "Tidak ada bahan yang cocok."
                 : tab === "accord"
                   ? "Belum ada accord tersimpan. Buat formula berkategori Accord, simpan versinya, lalu dia muncul di sini."
                   : "Belum ada FO terdaftar."}
@@ -238,6 +283,25 @@ export function MaterialPicker({
                     </div>
                   </CommandItem>
                 ))}
+              </CommandGroup>
+            )}
+
+            {/* Selalu ada di ujung daftar, bukan cuma saat hasilnya kosong:
+                nama yang mirip ("Nagarmotha" vs "Cypriol / Nagarmotha") bisa
+                muncul padahal bahan yang dicari memang belum ada. */}
+            {tab === "material" && onCreated && (
+              <CommandGroup>
+                <CommandItem
+                  value="__new_material"
+                  keywords={[query]}
+                  onSelect={() => setCreating(query.trim())}
+                  className="gap-2 py-2.5 font-medium text-[var(--cta)]"
+                >
+                  <Plus className="size-4" />
+                  {query.trim()
+                    ? `Buat bahan baru “${query.trim()}”`
+                    : "Buat bahan baru"}
+                </CommandItem>
               </CommandGroup>
             )}
 
@@ -312,13 +376,17 @@ export function MaterialPicker({
             )}
           </CommandList>
         </Command>
+          </>
+        )}
 
+        {creating == null && (
         <div className="flex items-center justify-between border-t border-[var(--border)] px-5 py-2.5 text-[11px] text-[var(--text-subtle)]">
           <span>↑↓ pilih · Enter tambah · Esc tutup</span>
           <Button type="button" variant="ghost" size="sm" onClick={close}>
             Tutup
           </Button>
         </div>
+        )}
       </DialogContent>
     </Dialog>
   );

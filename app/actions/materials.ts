@@ -3,18 +3,15 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { describeDbError, fail, ok, type ActionResult } from "@/lib/action-result";
+import { deriveMaterial, normalizeName } from "@/lib/calc/deriveMaterial";
+import type { FacetKeywordConfig } from "@/lib/calc/facetize";
 import {
-  facetize,
-  isBridgeCandidate,
-  tierHintFromFamily,
-  type FacetKeywordConfig,
-} from "@/lib/calc/facetize";
-import {
-  isSolventProduct,
-  parseSupplierDilution,
   SOLVENT_PRODUCTS,
   type SolventToken,
 } from "@/lib/calc/supplierDilution";
+import type { Material } from "@/lib/calc/types";
+import { fetchMaterials } from "@/lib/data/loadFormulaContext";
+import type { MaterialMeta } from "@/lib/data/loadEditorData";
 import {
   parseMaterialRows,
   type MaterialColumn,
@@ -101,10 +98,43 @@ const materialInput = z.object({
 const nullable = (v: string | null | undefined) =>
   v && v.trim() ? v.trim() : null;
 
+const newMaterialInput = materialInput.extend({
+  /** kosong = diturunkan dari family */
+  note_tier_hint: z.enum(["top", "mid", "base"]).nullable().optional(),
+  prices: z
+    .array(
+      z.object({
+        tier_size: z.number().positive(),
+        price_idr: z.number().min(0),
+      }),
+    )
+    .optional(),
+});
+
+export type NewMaterialInput = z.input<typeof newMaterialInput>;
+
+export type CreatedMaterial = {
+  id: string;
+  /** bentuk yang dipakai kalkulasi, supaya editor bisa langsung menghitungnya */
+  material: Material;
+  meta: MaterialMeta;
+};
+
+/**
+ * Bahan baru yang dimasukkan sendiri dari aplikasi — bukan dari pricelist.
+ *
+ * Semua yang biasanya diturunkan saat import (facet, dilusi bawaan dari nama,
+ * pelarut, kandidat bridger, kebiasaan tier) diturunkan di sini dengan fungsi
+ * yang sama, deriveMaterial(). Bahan buatan sendiri tidak boleh dinilai dengan
+ * aturan yang berbeda dari bahan supplier.
+ *
+ * Bahannya milik user (owner_id terisi), jadi import pricelist berikutnya
+ * tidak akan pernah menyentuhnya — import hanya mencocokkan bahan global.
+ */
 export async function createMaterial(
-  input: z.input<typeof materialInput>,
-): Promise<ActionResult<{ id: string }>> {
-  const parsed = materialInput.safeParse(input);
+  input: NewMaterialInput,
+): Promise<ActionResult<CreatedMaterial>> {
+  const parsed = newMaterialInput.safeParse(input);
   if (!parsed.success) {
     const first = parsed.error.issues[0];
     return fail(first.message, String(first.path[0] ?? ""));
@@ -114,6 +144,56 @@ export async function createMaterial(
   const db = getDb();
   const ownerId = await getOwnerId();
 
+  // Duplikat dicek sebelum menulis. Dua "Nagarmotha Oil" di master membuat
+  // picker menampilkan dua baris yang tidak bisa dibedakan, dan stok serta
+  // harganya terpecah ke dua tempat.
+  const { data: sameName, error: dupErr } = await db
+    .from("raw_materials")
+    .select("id, name, owner_id")
+    .or(`owner_id.is.null,owner_id.eq.${ownerId}`)
+    .eq("is_active", true)
+    .ilike("name", v.name.replace(/[%_\\]/g, (c) => `\\${c}`));
+  if (dupErr) return fail(describeDbError(dupErr));
+  const dup = (sameName ?? []).find(
+    (m) => normalizeName(m.name) === normalizeName(v.name),
+  );
+  if (dup) {
+    return fail(
+      `${dup.name} sudah ada di master${dup.owner_id ? "" : " (dari pricelist supplier)"}. Cari dengan nama itu, atau pakai nama yang lain.`,
+      "name",
+    );
+  }
+
+  const family = nullable(v.family);
+  const category = nullable(v.category);
+  const odourProfile = nullable(v.odour_profile);
+  const derived = deriveMaterial(
+    {
+      name: v.name,
+      synonym: nullable(v.synonym),
+      family,
+      category,
+      odourProfile,
+      impact: v.odor_impact ?? null,
+    },
+    FACET_CONFIG,
+  );
+
+  // Pelarut bawaan ("... 10 TEC") disambungkan ke baris pelarut di master,
+  // sama seperti import. Kalau tidak ketemu dibiarkan kosong — lebih baik
+  // kosong daripada menunjuk ke bahan yang salah.
+  let supplierSolventId: string | null = null;
+  if (derived.solventToken) {
+    const { data: solvents } = await db
+      .from("raw_materials")
+      .select("id, name")
+      .is("owner_id", null)
+      .eq("is_solvent", true);
+    const pattern = SOLVENT_PRODUCTS[derived.solventToken];
+    supplierSolventId =
+      (solvents ?? []).find((s) => pattern.test(s.name))?.id ?? null;
+  }
+
   const { data, error } = await db
     .from("raw_materials")
     .insert({
@@ -121,9 +201,9 @@ export async function createMaterial(
       name: v.name,
       synonym: nullable(v.synonym),
       cas_number: nullable(v.cas_number),
-      family: nullable(v.family),
-      category: nullable(v.category),
-      odour_profile: nullable(v.odour_profile),
+      family,
+      category,
+      odour_profile: odourProfile,
       function_category: v.function_category ?? null,
       odor_impact: v.odor_impact ?? null,
       default_dilution_pct: v.default_dilution_pct ?? 100,
@@ -131,6 +211,13 @@ export async function createMaterial(
       tgsc_url: nullable(v.tgsc_url),
       supplier: nullable(v.supplier),
       personal_note: nullable(v.personal_note),
+      supplier_dilution_pct: derived.supplierDilutionPct,
+      supplier_solvent_id: supplierSolventId,
+      is_solvent: derived.isSolvent,
+      is_bridge_candidate: derived.isBridgeCandidate,
+      // Pilihan user menang atas turunan dari family. Bahannya milik user
+      // sendiri, jadi di sini dia memang sumber datanya — bukan koreksi.
+      note_tier_hint: v.note_tier_hint ?? derived.noteTierHint,
     })
     .select("id")
     .single();
@@ -138,10 +225,50 @@ export async function createMaterial(
   if (error || !data) {
     return fail(describeDbError(error ?? { message: "Gagal menyimpan bahan" }));
   }
+  const id = data.id;
+
+  const facetRows = Object.entries(derived.facets).map(([facet_key, weight]) => ({
+    raw_material_id: id,
+    facet_key,
+    weight,
+  }));
+  if (facetRows.length) {
+    const { error: fErr } = await db.from("raw_material_facets").insert(facetRows);
+    if (fErr) return fail(`Bahan tersimpan, tapi facet-nya gagal: ${describeDbError(fErr)}`);
+  }
+
+  const today = new Date().toISOString().slice(0, 10);
+  const priceRows = (v.prices ?? []).map((p) => ({
+    raw_material_id: id,
+    tier_size: p.tier_size,
+    price_idr: p.price_idr,
+    effective_date: today,
+  }));
+  if (priceRows.length) {
+    const { error: pErr } = await db
+      .from("rm_prices")
+      .upsert(priceRows, { onConflict: "raw_material_id,tier_size,effective_date" });
+    if (pErr) return fail(`Bahan tersimpan, tapi harganya gagal: ${describeDbError(pErr)}`);
+  }
+
+  // Dibaca ulang lewat loader yang sama dengan editor, supaya bentuknya pasti
+  // sama — termasuk resolusi kategori fungsi dan asal-usulnya.
+  const material = (await fetchMaterials(db, [id])).get(id);
+  if (!material) return fail("Bahan tersimpan, tapi gagal dibaca ulang.");
 
   revalidatePath("/materials");
   revalidatePath("/admin/materials");
-  return ok({ id: data.id });
+  return ok({
+    id,
+    material,
+    meta: {
+      id,
+      synonym: nullable(v.synonym),
+      casNumber: nullable(v.cas_number),
+      family,
+      odourProfile,
+    },
+  });
 }
 
 export async function updateMaterial(
@@ -367,16 +494,19 @@ export async function importMaterialsCsv(
     // user, jadi aman disegarkan tiap import. Koreksi user hidup di kolom lain
     // (odor_impact_override, odor_impact_note, personal_note) yang memang tidak
     // pernah masuk payload ini.
-    const facets = facetize(
+    //
+    // Aturannya sama persis dengan form bahan baru — lewat deriveMaterial().
+    const derived = deriveMaterial(
       {
         name: r.name,
         synonym: r.synonym,
         family: r.family,
+        category: r.category,
         odourProfile: r.odour_profile,
+        impact: r.odor_impact,
       },
       FACET_CONFIG,
     );
-    const dilution = parseSupplierDilution(r.name);
 
     return {
       ...(id ? { id } : {}),
@@ -393,25 +523,14 @@ export async function importMaterialsCsv(
       // Dilusi yang sudah menempel dari pabrik, dibaca dari nama produk.
       // 100 = neat. supplier_solvent_id disambungkan di pass kedua, setelah
       // semua bahan punya id.
-      supplier_dilution_pct: dilution?.pct ?? 100,
-      is_solvent: isSolventProduct(r.name, r.category),
-      is_bridge_candidate: isBridgeCandidate(
-        {
-          name: r.name,
-          synonym: r.synonym,
-          family: r.family,
-          odourProfile: r.odour_profile,
-          category: r.category,
-          impact: r.odor_impact,
-        },
-        facets,
-        FACET_CONFIG,
-      ),
-      note_tier_hint: tierHintFromFamily(r.family, FACET_CONFIG),
+      supplier_dilution_pct: derived.supplierDilutionPct,
+      is_solvent: derived.isSolvent,
+      is_bridge_candidate: derived.isBridgeCandidate,
+      note_tier_hint: derived.noteTierHint,
       _line: r.line,
       _isNew: !id,
-      _facets: facets,
-      _solventToken: dilution?.solventToken ?? null,
+      _facets: derived.facets,
+      _solventToken: derived.solventToken,
     };
   });
 

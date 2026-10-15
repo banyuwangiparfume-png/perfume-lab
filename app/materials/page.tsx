@@ -1,5 +1,6 @@
 import { Beaker } from "lucide-react";
 import { MaterialsTable } from "@/components/materials/MaterialsTable";
+import { NewMaterialButton } from "@/components/materials/NewMaterialButton";
 import { EmptyState, PageHeader } from "@/components/shared/primitives";
 import { listFragranceOils } from "@/lib/data/fragrance-oils";
 import { listAccordsForPicker } from "@/lib/data/versions";
@@ -100,7 +101,9 @@ export default async function MaterialsPage({
       <PageHeader
         title="Master bahan"
         subtitle="Raw material dan FO dalam satu daftar. Angka impact bucketed dari supplier — bagus untuk mendeteksi kelebihan dosis, tidak untuk presisi. Koreksi sendiri lewat halaman detail tiap bahan."
-      />
+      >
+        <NewMaterialButton />
+      </PageHeader>
 
       {rows.length === 0 ? (
         <EmptyState
