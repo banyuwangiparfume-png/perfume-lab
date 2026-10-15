@@ -133,7 +133,10 @@ export function MaterialPicker({
         </DialogHeader>
 
         {creating != null && onCreated ? (
-          <div className="overflow-y-auto px-5 pb-5">
+          // Tinggi dibatasi sendiri: DialogContent memotong isinya
+          // (overflow-hidden) dan tidak memberi tinggi ke anaknya, jadi tanpa
+          // ini bagian bawah form — harga dan tombol simpan — terpotong.
+          <div className="max-h-[calc(85dvh-8rem)] overflow-y-auto px-5">
             <button
               type="button"
               onClick={() => setCreating(null)}

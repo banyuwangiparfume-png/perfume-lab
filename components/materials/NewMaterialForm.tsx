@@ -381,7 +381,9 @@ export function NewMaterialForm({
         </p>
       )}
 
-      <div className="flex justify-end gap-2">
+      {/* Menempel di bawah area scroll: form ini cukup panjang, dan tombol
+          simpan yang harus dicari dengan scroll terasa seperti tidak ada. */}
+      <div className="sticky bottom-0 -mx-1 flex justify-end gap-2 border-t border-[var(--border)] bg-[var(--surface)] px-1 py-3">
         {onCancel && (
           <Button type="button" variant="outline" onClick={onCancel}>
             Batal
