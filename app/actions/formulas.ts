@@ -144,7 +144,9 @@ export async function updateFormula(
 
   if (error) return fail(describeDbError(error));
 
-  revalidatePath(`/formulas/${id}`);
+  // "layout" supaya editor, lembar timbang, dan halaman banding formula ini
+  // ikut segar — nama tampil di semuanya.
+  revalidatePath(`/formulas/${id}`, "layout");
   revalidatePath("/formulas");
   return ok();
 }

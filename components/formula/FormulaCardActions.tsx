@@ -2,9 +2,17 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { Archive, ArchiveRestore, Copy, MoreHorizontal, Trash2 } from "lucide-react";
+import {
+  Archive,
+  ArchiveRestore,
+  Copy,
+  MoreHorizontal,
+  Pencil,
+  Trash2,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Dialog,
   DialogContent,
@@ -24,6 +32,7 @@ import {
   deleteFormula,
   duplicateFormula,
   setFormulaArchived,
+  updateFormula,
 } from "@/app/actions/formulas";
 
 /**
@@ -49,7 +58,31 @@ export function FormulaCardActions({
 }) {
   const router = useRouter();
   const [confirming, setConfirming] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const [newName, setNewName] = useState(name);
   const [pending, start] = useTransition();
+
+  const rename = () => {
+    const next = newName.trim();
+    if (!next) {
+      toast.error("Nama formula wajib diisi.");
+      return;
+    }
+    if (next === name) {
+      setRenaming(false);
+      return;
+    }
+    start(async () => {
+      const result = await updateFormula(id, { name: next });
+      if (result.ok) {
+        toast.success("Nama formula diganti.");
+        setRenaming(false);
+        router.refresh();
+      } else {
+        toast.error(result.error);
+      }
+    });
+  };
 
   const run = (fn: () => Promise<{ ok: boolean; error?: string }>, done: string) =>
     start(async () => {
@@ -87,6 +120,16 @@ export function FormulaCardActions({
           align="end"
           onClick={(e) => e.preventDefault()}
         >
+          <DropdownMenuItem
+            onSelect={() => {
+              setNewName(name);
+              setRenaming(true);
+            }}
+          >
+            <Pencil className="size-4" />
+            Ganti nama
+          </DropdownMenuItem>
+
           <DropdownMenuItem
             onSelect={() =>
               start(async () => {
@@ -131,6 +174,43 @@ export function FormulaCardActions({
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+
+      <Dialog open={renaming} onOpenChange={setRenaming}>
+        <DialogContent className="max-w-[440px]">
+          <DialogHeader>
+            <DialogTitle>Ganti nama</DialogTitle>
+            {/* Yang perlu diketahui sebelum mengganti: nama ini juga yang
+                tampil di formula lain yang memakainya sebagai accord. */}
+            <DialogDescription>
+              Riwayat versi dan catatan penciuman tetap utuh. Formula lain yang
+              memakai ini sebagai accord ikut menampilkan nama barunya.
+            </DialogDescription>
+          </DialogHeader>
+          <Input
+            autoFocus
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                rename();
+              }
+            }}
+          />
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setRenaming(false)}
+            >
+              Batal
+            </Button>
+            <Button type="button" onClick={rename} disabled={pending}>
+              {pending ? "Menyimpan…" : "Simpan"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={confirming} onOpenChange={setConfirming}>
         <DialogContent>
