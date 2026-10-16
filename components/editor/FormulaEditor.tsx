@@ -41,6 +41,7 @@ import { dominantFacet } from "@/lib/calc/aroma";
 
 const AUTOSAVE_MS = 2000;
 const ANALYZE_DEBOUNCE_MS = 150;
+const ONLY_STOCK_KEY = "pn:saran-hanya-stok";
 
 const newId = () => `line-${Math.random().toString(36).slice(2, 10)}`;
 
@@ -172,10 +173,31 @@ export function FormulaEditor(props: FormulaEditorProps) {
   const [analysis, setAnalysis] = useState(() =>
     analyze(context, { skipBridges: true }),
   );
+
+  // Filter "hanya dari stok" untuk saran. Diingat per browser — pilihan
+  // kebiasaan, bukan data formula. Dibaca setelah mount supaya render server
+  // dan klien sama.
+  const [onlyStock, setOnlyStock] = useState(false);
   useEffect(() => {
-    const t = setTimeout(() => setAnalysis(analyze(context)), ANALYZE_DEBOUNCE_MS);
+    try {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- sinkron sekali dari localStorage
+      setOnlyStock(localStorage.getItem(ONLY_STOCK_KEY) === "1");
+    } catch {}
+  }, []);
+  const changeOnlyStock = (value: boolean) => {
+    setOnlyStock(value);
+    try {
+      localStorage.setItem(ONLY_STOCK_KEY, value ? "1" : "0");
+    } catch {}
+  };
+
+  useEffect(() => {
+    const t = setTimeout(
+      () => setAnalysis(analyze(context, { onlyStockBridges: onlyStock })),
+      ANALYZE_DEBOUNCE_MS,
+    );
     return () => clearTimeout(t);
-  }, [context]);
+  }, [context, onlyStock]);
 
   // ---- autosave draf ----
   useEffect(() => {
@@ -622,6 +644,8 @@ export function FormulaEditor(props: FormulaEditorProps) {
               onWarningAction={handleWarning}
               onAddBridge={addBridge}
               onApplySolvent={applySolvent}
+              onlyStock={onlyStock}
+              onOnlyStockChange={changeOnlyStock}
             />
           </div>
         </aside>

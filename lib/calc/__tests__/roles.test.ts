@@ -185,3 +185,21 @@ describe("diffuser harus benar-benar mengangkat", () => {
     }
   });
 });
+
+describe("filter hanya dari stok", () => {
+  it("saran diffuser dan fixative cuma dari bahan yang ada di stok", () => {
+    for (const role of ["diffuser", "fixative"] as const) {
+      const c = withRole(role, "supplier");
+      const all = analyze(c);
+      const list = role === "diffuser" ? all.diffusers.all : all.fixatives;
+      expect(list.suggestions.length).toBeGreaterThan(1);
+
+      // Tandai satu saja sebagai stok — hasil terfilter harus cuma itu.
+      const kept = list.suggestions[1].materialId;
+      c.stock = new Set([kept]);
+      const filtered = analyze(c, { onlyStockBridges: true });
+      const got = role === "diffuser" ? filtered.diffusers.all : filtered.fixatives;
+      expect(got.suggestions.map((s) => s.materialId)).toEqual([kept]);
+    }
+  });
+});

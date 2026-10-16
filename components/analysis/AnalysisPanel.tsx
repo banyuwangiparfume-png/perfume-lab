@@ -968,12 +968,18 @@ export function AnalysisPanel({
   onWarningAction,
   onAddBridge,
   onApplySolvent,
+  onlyStock = false,
+  onOnlyStockChange,
 }: {
   analysis: Analysis;
   context: FormulaContext;
   onWarningAction?: (w: Warning) => void;
   onAddBridge?: (materialId: string, tier: Tier, dose: number) => void;
   onApplySolvent?: (solventId: string, newDirectPct: number) => void;
+  /** saran bridger/diffuser/fixative hanya dari bahan yang ada di stok */
+  onlyStock?: boolean;
+  /** tanpa ini filternya tidak ditampilkan — halaman baca tidak punya saran */
+  onOnlyStockChange?: (value: boolean) => void;
 }) {
   const [tab, setTab] = useState<TabKey>("ringkasan");
   const alerts = analysis.warnings.filter((w) => w.level !== "info").length;
@@ -1042,6 +1048,36 @@ export function AnalysisPanel({
       {tab === "hpp" && (
         <CostTab analysis={analysis} batchG={context.version.batchG} />
       )}
+      {/*
+        Satu filter untuk tiga tab saran, bukan tiga filter terpisah: pertanyaan
+        "bisa dicoba malam ini juga?" sama untuk bridger, diffuser, dan
+        fixative, dan pilihannya ikut terbawa saat berpindah tab.
+      */}
+      {onOnlyStockChange &&
+        (tab === "bridger" || tab === "diffuser" || tab === "fixative") && (
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              aria-pressed={onlyStock}
+              onClick={() => onOnlyStockChange(!onlyStock)}
+              className={cn(
+                "rounded-md border px-2 py-1 text-[12px] font-medium",
+                onlyStock
+                  ? "border-[var(--cta)] bg-[var(--cta)] text-white"
+                  : "border-[var(--border-strong)] text-[var(--text-muted)]",
+              )}
+            >
+              ★ Hanya dari stok saya
+            </button>
+            {onlyStock && (
+              <span className="text-[11px] leading-snug text-[var(--text-subtle)]">
+                {context.stock.size === 0
+                  ? "Belum ada bahan yang ditandai punya — tandai dulu di halaman Stok."
+                  : `${context.stock.size} bahan bertanda ★. Kalau sarannya kosong, stokmu belum punya yang cocok.`}
+              </span>
+            )}
+          </div>
+        )}
       {tab === "bridger" && (
         <BridgeTab analysis={analysis} onAdd={onAddBridge} />
       )}

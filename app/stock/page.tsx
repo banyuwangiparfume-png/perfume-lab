@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Beaker, Factory } from "lucide-react";
+import { Beaker, Download, Factory } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StockManager } from "@/components/materials/StockManager";
 import { EmptyState, PageHeader } from "@/components/shared/primitives";
@@ -51,6 +51,30 @@ export default async function StockPage() {
         title="Stok saya"
         subtitle="Tandai bahan yang benar-benar ada di rak, catat pembelian, dan kurangi lewat produksi."
       >
+        {/* Tautan biasa, bukan tombol aksi: berkasnya dibangun di server
+            (app/stock/export) sebagai .xlsx dan langsung diunduh. */}
+        <Button
+          asChild={stock.materials.size + stock.fos.size > 0}
+          variant="outline"
+          disabled={stock.materials.size + stock.fos.size === 0}
+          title={
+            stock.materials.size + stock.fos.size === 0
+              ? "Tandai dulu bahan yang kamu punya"
+              : "Bahan & FO yang ditandai punya, lengkap dengan odour profile, impact, facet, harga, dan sisa stok"
+          }
+        >
+          {stock.materials.size + stock.fos.size > 0 ? (
+            <a href="/stock/export" download>
+              <Download className="size-4" />
+              Export Excel
+            </a>
+          ) : (
+            <>
+              <Download className="size-4" />
+              Export Excel
+            </>
+          )}
+        </Button>
         <Button asChild>
           <Link href="/stock/produksi">
             <Factory className="size-4" />
