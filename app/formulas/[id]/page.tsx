@@ -117,13 +117,12 @@ export default async function FormulaDetailPage({
 
       {/* ---------------- pemilih versi ---------------- */}
       <div className="mb-5 flex flex-wrap items-center gap-2">
-        {selected.version_no === 0 ? (
+        {/* Versi tersimpan sudah ditandai lewat pilnya sendiri di bawah —
+            menampilkannya lagi di sini membuat "v2" muncul dua kali. Yang
+            perlu label terpisah cuma draf, karena dia tidak punya pil. */}
+        {selected.version_no === 0 && (
           <span className="rounded-md bg-[var(--warn-soft)] px-2 py-1 text-[12px] font-medium text-[var(--warn)]">
             Draf kerja — belum disimpan sebagai versi
-          </span>
-        ) : (
-          <span className="rounded-md bg-[var(--surface-muted)] px-2 py-1 text-[12px] font-medium">
-            v{selected.version_no}
           </span>
         )}
 
@@ -169,7 +168,10 @@ export default async function FormulaDetailPage({
           action={{ href: `/formulas/${id}/edit`, label: "Isi bahan" }}
         />
       ) : (
-        <div className="grid gap-5 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+        // Dua kolom mulai lg, sama dengan editor. Di xl, laptop dengan skala
+        // Windows 150% (1280 dikurangi scrollbar) jatuh ke satu kolom dan
+        // panel analisa terdorong ke bawah tabel.
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)] xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
           <div className="space-y-5">
             <Card>
               <CardTitle
@@ -182,6 +184,7 @@ export default async function FormulaDetailPage({
                 table={analysis.lines}
                 batchG={context.version.batchG}
                 grouped={formula.pyramid_mode}
+                stock={[...context.stock]}
               />
 
               <p className="pt-3 text-[13px] text-[var(--text-muted)]">
@@ -253,7 +256,10 @@ export default async function FormulaDetailPage({
             )}
           </div>
 
-          <div className="space-y-5 xl:sticky xl:top-20 xl:self-start">
+          {/* Menempel dengan scroll sendiri — tanpa batas tinggi, kartu
+              Evaluasi di bawah Analisa tidak pernah bisa dicapai selama
+              kolomnya menempel. */}
+          <div className="space-y-5 lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] lg:self-start lg:overflow-y-auto lg:overscroll-contain">
             <Card>
               <CardTitle>Analisa</CardTitle>
               <AnalysisPanel analysis={analysis} context={context} />

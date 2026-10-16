@@ -14,6 +14,8 @@ type Props = {
   batchG: number;
   /** false = formula tanpa piramida; semua baris jadi satu kelompok */
   grouped: boolean;
+  /** id bahan & FO yang ada di rak — array, karena Set tidak bisa dikirim dari server */
+  stock?: string[];
 };
 
 const gram = (pct: number, batchG: number) => (pct / 100) * batchG;
@@ -25,7 +27,8 @@ const gram = (pct: number, batchG: number) => (pct / 100) * batchG;
  * `analyze`, jalur yang sama dengan panel live di editor. Komponen ini cuma
  * menyusun dan memberi warna.
  */
-export function CompositionTable({ table, batchG, grouped }: Props) {
+export function CompositionTable({ table, batchG, grouped, stock = [] }: Props) {
+  const inStock = new Set(stock);
   const [open, setOpen] = useState<Set<string>>(new Set());
 
   const toggle = (id: string) =>
@@ -95,6 +98,7 @@ export function CompositionTable({ table, batchG, grouped }: Props) {
                   batchG={batchG}
                   expandable={expandable}
                   isOpen={isOpen}
+                  inStock={inStock.has(row.refId)}
                   onToggle={() => toggle(row.lineId)}
                 />
               );
@@ -150,12 +154,14 @@ function Rows({
   batchG,
   expandable,
   isOpen,
+  inStock,
   onToggle,
 }: {
   row: LineTable["rows"][number];
   batchG: number;
   expandable: boolean;
   isOpen: boolean;
+  inStock: boolean;
   onToggle: () => void;
 }) {
   // Sel FO diberi arsir tipis: memang tidak akan pernah terisi, dan itu beda
@@ -193,6 +199,16 @@ function Rows({
             )}
 
             <span className="font-medium">{row.name}</span>
+            {/* Bintang yang sama dengan editor, picker, dan halaman Stok. */}
+            {inStock && (
+              <span
+                className="text-[12px] text-[var(--warn)]"
+                title="Ada di stok"
+                aria-label="Ada di stok"
+              >
+                ★
+              </span>
+            )}
 
             {row.kind === "accord" && (
               <span className="rounded bg-[var(--brand-soft)] px-1 py-0.5 text-[10px] font-semibold text-[var(--brand)]">
