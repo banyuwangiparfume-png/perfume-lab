@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Save, Undo2 } from "lucide-react";
+import { FileUp, Save, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 import type { CreatedMaterial } from "@/app/actions/materials";
 import { saveDraft, saveVersion } from "@/app/actions/versions";
@@ -34,7 +34,9 @@ import type { EditorData } from "@/lib/data/loadEditorData";
 import type { MaterialMeta } from "@/lib/data/loadEditorData";
 import { PYRAMID_TIERS, TIER_META, parseDecimal } from "@/lib/tiers";
 import { targetOf, tierSummary, useEditorStore } from "@/stores/editorStore";
+import { ImportFormulaDialog } from "./ImportFormulaDialog";
 import { MaterialPicker, type PickResult } from "./MaterialPicker";
+import type { ImportCatalog } from "@/lib/import/formulaImport";
 import { PyramidInput } from "./PyramidInput";
 import { TierCard, type LineView } from "./TierCard";
 import { dominantFacet } from "@/lib/calc/aroma";
@@ -67,6 +69,7 @@ export function FormulaEditor(props: FormulaEditorProps) {
   const store = useEditorStore();
   const [pickerTier, setPickerTier] = useState<Tier | null>(null);
   const [saveOpen, setSaveOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [changeNote, setChangeNote] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [batchInput, setBatchInput] = useState(String(props.initial.batchG));
@@ -117,6 +120,31 @@ export function FormulaEditor(props: FormulaEditorProps) {
       ]),
     [props.meta, created],
   );
+  // Katalog untuk import: semua yang bisa jadi baris formula, dengan nama
+  // lain dan CAS supaya nama yang ditulis AI bisa dicocokkan.
+  const importCatalog: ImportCatalog = useMemo(
+    () => ({
+      entries: [
+        ...allMaterials.map((m) => ({
+          id: m.id,
+          kind: "raw_material" as const,
+          name: m.name,
+          synonym: metaMap.get(m.id)?.synonym ?? null,
+          cas: metaMap.get(m.id)?.casNumber ?? null,
+          tierHint: m.noteTierHint,
+        })),
+        // Accord yang tidak bisa dipakai (memakai formula ini sendiri) tidak
+        // ditawarkan — sama dengan picker.
+        ...props.data.accords
+          .filter((a) => !a.disabledReason)
+          .map((a) => ({ id: a.versionId, kind: "accord" as const, name: a.label })),
+        ...props.data.fos.map((f) => ({ id: f.id, kind: "fo" as const, name: f.name })),
+      ],
+      solvents: props.data.solvents,
+    }),
+    [allMaterials, metaMap, props.data.accords, props.data.fos, props.data.solvents],
+  );
+
   const stockSet = useMemo(
     () => new Set(props.data.stock),
     [props.data.stock],
@@ -534,6 +562,16 @@ export function FormulaEditor(props: FormulaEditorProps) {
             type="button"
             variant="ghost"
             size="sm"
+            onClick={() => setImportOpen(true)}
+            title="Isi draf dari template Excel — misalnya hasil isian AI"
+          >
+            <FileUp className="size-4" />
+            Import
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
             disabled={!store.past.length}
             onClick={() => useEditorStore.getState().undo()}
           >
@@ -650,6 +688,19 @@ export function FormulaEditor(props: FormulaEditorProps) {
           </div>
         </aside>
       </div>
+
+      <ImportFormulaDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        catalog={importCatalog}
+        pyramidMode={props.pyramidMode}
+        currentLineCount={store.lines.length}
+        newId={newId}
+        onImport={(lines, pyramid) => {
+          useEditorStore.getState().importLines(lines, pyramid);
+          toast.success(`${lines.length} bahan masuk ke draf.`);
+        }}
+      />
 
       {pickerTier && (
         <MaterialPicker

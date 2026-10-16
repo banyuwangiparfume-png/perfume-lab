@@ -69,6 +69,11 @@ export type EditorState = EditorSnapshot & {
   applyRatio: (tier: Tier, ratios: Record<string, number>) => void;
   retargetTier: (tier: Tier, target: number) => void;
   setPyramid: (pyramid: Pyramid) => void;
+  /**
+   * Ganti seluruh isi draf dengan baris hasil import. Lewat commit seperti
+   * perubahan lain, jadi bisa di-undo. `pyramid` null = target lama dipakai.
+   */
+  importLines: (lines: Line[], pyramid: Pyramid | null) => void;
   setBatchG: (batchG: number) => void;
   setPriceTierOverride: (tier: number | null) => void;
 
@@ -297,6 +302,14 @@ export const useEditorStore = create<EditorState>((set) => {
         }
         return { pyramid, lines };
       }),
+
+    // Tidak lewat setPyramid: itu menskalakan baris lama ke target baru,
+    // padahal di sini barisnya sendiri yang menentukan targetnya.
+    importLines: (lines, pyramid) =>
+      commit((s) => ({
+        lines,
+        pyramid: pyramid && s.pyramid ? pyramid : s.pyramid,
+      })),
 
     // Ukuran batch tidak menyentuh persen — cuma gram dan harga yang berubah.
     setBatchG: (batchG) =>
