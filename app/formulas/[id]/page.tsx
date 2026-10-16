@@ -5,8 +5,8 @@ import { AnalysisPanel } from "@/components/analysis/AnalysisPanel";
 import { EvaluationCard } from "@/components/evaluation/EvaluationCard";
 import { CompositionTable } from "@/components/formula/CompositionTable";
 import { FormulaCardActions } from "@/components/formula/FormulaCardActions";
-
 import { DiluteButton } from "@/components/formula/DiluteButton";
+import { MixButton } from "@/components/formula/MixButton";
 import {
   Card,
   CardTitle,
@@ -95,6 +95,16 @@ export default async function FormulaDetailPage({
             Edit
           </Link>
         </Button>
+        {/* Protokol lab berurutan: dicampur dulu, baru diencerkan. Draf tidak
+            ditawari — yang diracik harus versi yang dibekukan. */}
+        {!isEmpty && selected.version_no > 0 && (
+          <MixButton
+            versionId={selected.id}
+            label={`v${selected.version_no}`}
+            mixedAt={selected.mixed_at}
+            dilutedAt={selected.diluted_at}
+          />
+        )}
         {!isEmpty && selected.mixed_at && (
           <DiluteButton
             versionId={selected.id}
@@ -268,7 +278,11 @@ export default async function FormulaDetailPage({
                 <p className="text-[13px] text-[var(--text-muted)]">
                   {selected.diluted_at
                     ? "Belum ada catatan penciuman untuk versi ini."
-                    : "Tandai dulu kapan versi ini dicampur dan diencerkan — evaluasi baru masuk akal setelah ketemu ethanol."}
+                    : selected.version_no === 0
+                      ? "Ini draf kerja. Simpan dulu sebagai versi, racik, lalu tandai dicampur dan diencerkan — evaluasi baru masuk akal setelah ketemu ethanol."
+                      : selected.mixed_at
+                        ? "Tandai diencerkan setelah konsentratnya ketemu ethanol — evaluasi bisa dimulai dari situ."
+                        : "Tandai dicampur setelah konsentratnya diracik, lalu diencerkan — evaluasi baru masuk akal setelah ketemu ethanol."}
                 </p>
               ) : (
                 <div className="space-y-3">

@@ -273,14 +273,47 @@ export async function updateVersionMeta(
   return ok();
 }
 
-/** Fase minyak dicampur. Dari sini oil rest 24–48 jam mulai berjalan. */
+/**
+ * Fase minyak dicampur. Dari sini oil rest 24–48 jam mulai berjalan.
+ *
+ * Dipanggil lagi untuk mengoreksi tanggal, jadi statusnya hanya dinaikkan ke
+ * "mixed" dari draft/saved — versi yang sudah dinilai tidak boleh turun status
+ * hanya karena tanggal campurnya dibetulkan.
+ */
 export async function markMixed(
   versionId: string,
   mixedAt?: string,
 ): Promise<ActionResult> {
+  const owned = await loadOwnedVersion(versionId);
+  if ("error" in owned) return fail(owned.error);
+
+  // Draf terus berubah; racikan harus menunjuk ke isi yang dibekukan, kalau
+  // tidak catatan penciumannya nanti merujuk ke formula yang sudah lain.
+  if (owned.version.version_no === 0) {
+    return fail(
+      "Simpan dulu drafnya sebagai versi. Yang diracik harus versi yang dibekukan, supaya catatan penciumannya nanti merujuk ke isi yang pasti.",
+    );
+  }
+
+  const when = mixedAt ?? new Date().toISOString();
+  if (new Date(when).getTime() > Date.now() + 60 * 60 * 1000) {
+    return fail("Tanggal pencampuran tidak bisa di masa depan.", "mixed_at");
+  }
+  if (
+    owned.version.diluted_at &&
+    new Date(when) > new Date(owned.version.diluted_at)
+  ) {
+    return fail(
+      "Tanggal pencampuran jatuh setelah tanggal pengenceran. Fase minyak dicampur DULU, baru ketemu ethanol.",
+      "mixed_at",
+    );
+  }
+
+  const raise =
+    owned.version.status === "draft" || owned.version.status === "saved";
   return updateVersionMeta(versionId, {
-    status: "mixed",
-    mixed_at: mixedAt ?? new Date().toISOString(),
+    ...(raise ? { status: "mixed" as const } : {}),
+    mixed_at: when,
   });
 }
 
