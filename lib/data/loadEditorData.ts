@@ -237,12 +237,23 @@ export type MaterialMeta = {
 export async function loadMaterialMeta(): Promise<Map<string, MaterialMeta>> {
   const db = getDb();
   const ownerId = await getOwnerId();
-  const { data, error } = await db
-    .from("raw_materials")
-    .select("id, synonym, cas_number, family, odour_profile")
-    .or(`owner_id.is.null,owner_id.eq.${ownerId}`)
-    .eq("is_active", true);
-  if (error) throw new Error(`Gagal memuat info bahan: ${error.message}`);
+  // Berhalaman: tanpa ini, begitu master lewat 1.000 baris, odour profile
+  // dan sinonim sebagian bahan hilang dari picker tanpa pesan apa pun.
+  const data = await fetchAllPages<{
+    id: string;
+    synonym: string | null;
+    cas_number: string | null;
+    family: string | null;
+    odour_profile: string | null;
+  }>((from, to) =>
+    db
+      .from("raw_materials")
+      .select("id, synonym, cas_number, family, odour_profile")
+      .or(`owner_id.is.null,owner_id.eq.${ownerId}`)
+      .eq("is_active", true)
+      .order("id")
+      .range(from, to),
+  );
   return new Map(
     (data ?? []).map((m) => [
       m.id,

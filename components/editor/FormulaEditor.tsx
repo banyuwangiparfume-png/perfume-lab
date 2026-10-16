@@ -324,6 +324,7 @@ export function FormulaEditor(props: FormulaEditorProps) {
         "(komponen tidak ditemukan)",
       material,
       accordSize: accord?.materialCount,
+      inStock: stockSet.has(line.refId),
       // Accord tidak punya facet sendiri — arahnya dijumlahkan dari isinya.
       // FO sengaja tidak diberi label: isinya tidak diketahui, dan menebaknya
       // akan membuat label itu berbohong.

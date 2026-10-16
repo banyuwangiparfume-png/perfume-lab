@@ -27,7 +27,7 @@ import type { Material, Settings, Tier } from "@/lib/calc/types";
 import type { CreatedMaterial } from "@/app/actions/materials";
 import type { AccordOption } from "@/lib/data/versions";
 import type { MaterialMeta } from "@/lib/data/loadEditorData";
-import { TIER_META, facetColor } from "@/lib/tiers";
+import { TIER_META, facetColor, facetLabel } from "@/lib/tiers";
 import { cn } from "@/lib/utils";
 
 export type PickResult =
@@ -50,7 +50,7 @@ function FacetDots({ facets }: { facets: Record<string, number> }) {
             className="size-2 rounded-full"
             style={{ backgroundColor: facetColor(key) }}
           />
-          <span className="capitalize text-[var(--text-subtle)]">{key}</span>
+          <span className="text-[var(--text-subtle)]">{facetLabel(key)}</span>
           <span className="numeric text-[var(--text-subtle)]">
             {Math.round(w * 100)}
           </span>
@@ -300,6 +300,16 @@ export function MaterialPicker({
                         </span>
                       )}
                     </div>
+
+                    {/* Facet adalah ringkasan hasil hitung; odour profile
+                        adalah kata-kata supplier yang jadi sumbernya. Dua
+                        baris cukup untuk menangkap wataknya tanpa membuat
+                        daftar panjang jadi sulit disisir. */}
+                    {info?.odourProfile && (
+                      <p className="line-clamp-2 text-[11px] leading-snug text-[var(--text-muted)]">
+                        {info.odourProfile}
+                      </p>
+                    )}
                   </CommandItem>
                 ))}
               </CommandGroup>

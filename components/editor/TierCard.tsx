@@ -48,6 +48,8 @@ export type LineView = {
   cost: number | null;
   /** R5 terpicu — kekuatannya jauh melebihi porsinya */
   dominant: boolean;
+  /** botolnya ada di rak — sama dengan bintang di picker dan halaman Stok */
+  inStock: boolean;
 };
 
 const DILUTION_CHIPS = [100, 50, 25, 10, 5, 1];
@@ -274,6 +276,17 @@ function LineRow({
       <div className="min-w-[160px] flex-1">
         <div className="flex items-center gap-1.5">
           <span className="truncate text-[13px] font-medium">{view.label}</span>
+          {/* Bintang yang sama dengan picker dan halaman Stok. Saat meracik,
+              baris tanpa bintang adalah daftar belanja. */}
+          {view.inStock && (
+            <span
+              className="shrink-0 text-[12px] text-[var(--warn)]"
+              title="Ada di stok"
+              aria-label="Ada di stok"
+            >
+              ★
+            </span>
+          )}
           {line.kind === "accord" && (
             <span className="rounded bg-[var(--brand-soft)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--brand)]">
               ACCORD{view.accordSize ? ` · ${view.accordSize}` : ""}
