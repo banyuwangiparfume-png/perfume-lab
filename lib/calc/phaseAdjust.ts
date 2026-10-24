@@ -25,7 +25,11 @@ import type { ExpandedItem, FormulaContext, Line, Pyramid, Tier } from "./types"
 type PyramidTier = Exclude<Tier, "all">;
 export type PhaseDirection = "up" | "down";
 
+/** Pergeseran aroma fase ini akibat sebuah aksi — dua yang paling besar. */
+export type AromaShift = { facet: string; before: number; after: number };
+
 export type PyramidShift = {
+  aroma: AromaShift[];
   pyramid: Pyramid;
   /** tier yang dikorbankan (turun) atau diberi (naik) */
   other: PyramidTier;
@@ -33,7 +37,12 @@ export type PyramidShift = {
   afterPct: number;
 };
 
-export type PhaseLineOption = { action: "half" | "remove"; newPct: number; afterPct: number };
+export type PhaseLineOption = {
+  action: "half" | "remove";
+  newPct: number;
+  afterPct: number;
+  aroma: AromaShift[];
+};
 
 export type PhaseLine = {
   lineId: string;
@@ -51,6 +60,7 @@ export type PhaseCandidate = {
   inStock: boolean;
   dose: number;
   afterPct: number;
+  aroma: AromaShift[];
 };
 
 export type PhaseLever = {
@@ -80,15 +90,22 @@ export function phaseLever(
   const { onlyStock = false, limit = 5 } = opts;
   const sign = direction === "up" ? 1 : -1;
 
-  const pctFromItems = (c: FormulaContext, items: ExpandedItem[]) =>
-    phaseReport(c, items).phases.find((p) => p.key === phase)!.tiers[tier];
-  const pctFromLines = (lines: Line[], pyramid = ctx.version.pyramid) => {
+  // Satu pembacaan fase per opsi: porsi tier-nya DAN profil aromanya —
+  // "Base turun 4 poin" belum menjawab "lalu baunya jadi apa".
+  const read = (c: FormulaContext, items: ExpandedItem[]) => {
+    const p = phaseReport(c, items).phases.find((x) => x.key === phase)!;
+    return { pct: p.tiers[tier], facets: p.allFacets };
+  };
+  const readLines = (lines: Line[], pyramid = ctx.version.pyramid) => {
     const c = withLines(ctx, lines, pyramid);
-    return pctFromItems(c, expand(c));
+    return read(c, expand(c));
   };
 
   const baseItems = expand(ctx);
-  const beforePct = pctFromItems(ctx, baseItems);
+  const before = read(ctx, baseItems);
+  const beforePct = before.pct;
+  const aromaOf = (after: { facets: { facet: string; pct: number }[] }) =>
+    aromaShift(before.facets, after.facets);
   const moved = (after: number) => sign * (after - beforePct) >= MIN_MOVE;
 
   // ---------------------------------------------------- tuas 1: piramida
@@ -100,8 +117,10 @@ export function phaseLever(
       for (const delta of DELTAS) {
         const next = { ...pyr, [tier]: pyr[tier] + sign * delta, [other]: pyr[other] - sign * delta };
         if (next[tier] < 0 || next[other] < 0) continue;
-        const afterPct = pctFromLines(linesAfterPyramid(ctx, next), next);
-        if (moved(afterPct)) pyramidShifts.push({ pyramid: next, other, delta, afterPct });
+        const after = readLines(linesAfterPyramid(ctx, next), next);
+        if (moved(after.pct)) {
+          pyramidShifts.push({ pyramid: next, other, delta, afterPct: after.pct, aroma: aromaOf(after) });
+        }
       }
     }
     pyramidShifts.sort((a, b) => sign * (b.afterPct - a.afterPct));
@@ -113,14 +132,14 @@ export function phaseLever(
   if (direction === "down") {
     for (const line of ctx.version.lines) {
       if (line.tier !== tier || line.kind === "fo") continue;
-      const removed = pctFromItems(
+      const removed = read(
         ctx,
         itemsWithTier(ctx, baseItems, tier, linesAfterEdit(ctx, line.id, 0)),
       );
-      const responsibility = beforePct - removed;
+      const responsibility = beforePct - removed.pct;
       if (responsibility < MIN_MOVE) continue;
       const half = line.pct / 2;
-      const halved = pctFromItems(
+      const halved = read(
         ctx,
         itemsWithTier(ctx, baseItems, tier, linesAfterEdit(ctx, line.id, half)),
       );
@@ -133,8 +152,8 @@ export function phaseLever(
         pct: line.pct,
         responsibility,
         options: [
-          { action: "half", newPct: half, afterPct: halved },
-          { action: "remove", newPct: 0, afterPct: removed },
+          { action: "half", newPct: half, afterPct: halved.pct, aroma: aromaOf(halved) },
+          { action: "remove", newPct: 0, afterPct: removed.pct, aroma: aromaOf(removed) },
         ],
       });
     }
@@ -169,7 +188,7 @@ export function phaseLever(
 
     for (const m of pool) {
       const dose = starterDose(m, { totalScore, settings: ctx.settings });
-      const afterPct = pctFromItems(
+      const after = read(
         ctx,
         itemsWithTier(
           ctx,
@@ -178,14 +197,15 @@ export function phaseLever(
           linesAfterAdd(ctx, { kind: "raw_material", refId: m.id }, tier, dose),
         ),
       );
-      if (!moved(afterPct)) continue;
+      if (!moved(after.pct)) continue;
       candidates.push({
         materialId: m.id,
         name: m.name,
         impact: m.impact,
         inStock: ctx.stock.has(m.id),
         dose,
-        afterPct,
+        afterPct: after.pct,
+        aroma: aromaOf(after),
       });
     }
     candidates.sort((a, b) => b.afterPct - a.afterPct);
@@ -200,4 +220,23 @@ export function phaseLever(
     lines: lines.slice(0, limit),
     candidates: candidates.slice(0, limit),
   };
+}
+
+/** Pergeseran aroma terbesar yang terasa (≥ 0,5 poin), paling banyak dua. */
+export function aromaShift(
+  before: { facet: string; pct: number }[],
+  after: { facet: string; pct: number }[],
+): AromaShift[] {
+  const keys = new Set([...before, ...after].map((f) => f.facet));
+  const b = new Map(before.map((f) => [f.facet, f.pct]));
+  const a = new Map(after.map((f) => [f.facet, f.pct]));
+  return [...keys]
+    .map((facet) => ({ facet, before: b.get(facet) ?? 0, after: a.get(facet) ?? 0 }))
+    .filter((x) => Math.abs(x.after - x.before) >= MIN_MOVE)
+    .sort(
+      (x, y) =>
+        Math.abs(y.after - y.before) - Math.abs(x.after - x.before) ||
+        (x.facet < y.facet ? -1 : 1),
+    )
+    .slice(0, 2);
 }

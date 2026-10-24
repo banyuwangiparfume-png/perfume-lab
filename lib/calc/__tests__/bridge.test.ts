@@ -11,6 +11,7 @@ import {
 import type { FormulaContext, Material } from "../types";
 import { analyze } from "../analyze";
 import { linesAfterAdd, withLines } from "../simulate";
+import { makeCtx, mat } from "./ctxHelper";
 import { allMaterials, bridgeRules, fixtureContext, materialNamed } from "./fixture";
 
 const ctx: FormulaContext = {
@@ -358,5 +359,44 @@ describe("perkiraan skor setelah dipadukan", () => {
     });
     const after = analyze(c).bridges.withinTier.find((x) => x.tier === t.tier)!;
     expect(sg.after).toBeCloseTo(after.cohesion, 6);
+  });
+});
+
+describe("rekomendasi tidak melanggar kebiasaan tier bahannya sendiri", () => {
+  const m = (hint: "top" | "mid" | "base" | null) =>
+    ({ noteTierHint: hint }) as unknown as Material;
+
+  it("Top ↔ Mid: bahan ber-hint Top tetap di Top", () => {
+    expect(recommendTier(m("top"), ["top", "mid"])).toBe("top");
+    expect(recommendTier(m("mid"), ["top", "mid"])).toBe("mid");
+    expect(recommendTier(m(null), ["top", "mid"])).toBe("mid");
+  });
+
+  it("Padukan dalam tier tidak menawarkan bahan yang kebiasaannya tier lain", () => {
+    const c = fixtureContext();
+    for (const t of analyze(c).bridges.withinTier) {
+      for (const sg of t.suggestions) {
+        const hint = c.materials.get(sg.materialId)?.noteTierHint;
+        if (hint && t.tier !== "all") expect(hint).toBe(t.tier);
+      }
+    }
+  });
+
+  it("R7 membawa aksi memindahkan baris ke tier kebiasaannya", () => {
+    const { ctx: c } = makeCtx(
+      [mat("cashmeran", { noteTierHint: "base" }), mat("berg", { noteTierHint: "top" })],
+      [
+        { refId: "berg", pct: 20, tier: "top" },
+        { refId: "cashmeran", pct: 80, tier: "mid" },
+      ],
+      { pyramid: { top: 20, mid: 80, base: 0 } },
+    );
+    const r7 = analyze(c).warnings.filter((w) => w.code === "R7");
+    expect(r7).toHaveLength(1);
+    expect(r7[0].action).toEqual({
+      kind: "move_line",
+      lineId: c.version.lines[1].id,
+      tier: "base",
+    });
   });
 });

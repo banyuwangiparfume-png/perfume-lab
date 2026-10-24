@@ -430,6 +430,8 @@ export function FormulaEditor(props: FormulaEditorProps) {
       state.retargetTier(w.action.tier, w.action.target);
     else if (w.action.kind === "adjust_solvent")
       applySolvent(w.action.solventId, w.action.newDirectPct);
+    else if (w.action.kind === "move_line")
+      state.moveLine(w.action.lineId, w.action.tier);
   };
 
   const applySolvent = (solventId: string, newDirectPct: number) => {
@@ -683,7 +685,6 @@ export function FormulaEditor(props: FormulaEditorProps) {
               context={context}
               onWarningAction={handleWarning}
               onAddBridge={addBridge}
-              onApplySolvent={applySolvent}
               onlyStock={onlyStock}
               onOnlyStockChange={changeOnlyStock}
               onReduceLine={(lineId, pct) => {

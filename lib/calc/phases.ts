@@ -50,6 +50,8 @@ export type Phase = {
   rows: PhaseRow[];
   /** facet terbesar di fase ini — profil yang kemungkinan tercium */
   facets: { facet: string; pct: number }[];
+  /** semua facet di fase ini — untuk membandingkan sebelum/sesudah aksi */
+  allFacets: { facet: string; pct: number }[];
   notes: string[];
 };
 
@@ -151,9 +153,13 @@ export function phaseReport(
       rows: [...byRef.values()]
         .map((r) => ({ ...r, pct: pct(r.pct) }))
         .sort((a, b) => b.pct - a.pct),
-      facets: aromaShares(scaled, ctx.materials)
-        .slice(0, 3)
-        .map((s) => ({ facet: s.facet, pct: s.pct })),
+      ...(() => {
+        const all = aromaShares(scaled, ctx.materials).map((s) => ({
+          facet: s.facet,
+          pct: s.pct,
+        }));
+        return { facets: all.slice(0, 3), allFacets: all };
+      })(),
       notes,
     };
   });

@@ -10,7 +10,8 @@ export type WarningLevel = "info" | "warning" | "critical";
 export type WarningAction =
   | { kind: "normalize_tier"; tier: Tier; target: number }
   | { kind: "retarget_tier"; tier: Tier; target: number }
-  | { kind: "adjust_solvent"; solventId: string; newDirectPct: number };
+  | { kind: "adjust_solvent"; solventId: string; newDirectPct: number }
+  | { kind: "move_line"; lineId: string; tier: Tier };
 
 export type Warning = {
   code: string;
@@ -172,6 +173,9 @@ export function runRules(input: RulesInput): Warning[] {
         level: "info",
         message: `${m.name} biasanya ${TIER_LABEL[m.noteTierHint].toLowerCase()}, sekarang di ${TIER_LABEL[line.tier]}. Bukan larangan — tier itu label penempatan, bukan fakta kimia.`,
         lineIds: [line.id],
+        // Satu klik untuk memindahkannya — persennya ikut pindah, sama
+        // dengan "Pindah ke" di menu baris.
+        action: { kind: "move_line", lineId: line.id, tier: m.noteTierHint },
       });
     }
   }

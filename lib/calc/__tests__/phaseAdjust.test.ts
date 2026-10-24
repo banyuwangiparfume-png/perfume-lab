@@ -99,3 +99,19 @@ describe("atur porsi tier per fase", () => {
     expect(phaseLever(c, "opening", "top", "down").pyramidShifts).toBeNull();
   });
 });
+
+describe("efek ke aroma fase", () => {
+  it("pergeseran aroma tiap opsi sama dengan profil fase setelah aksinya diterapkan", () => {
+    const ctx = fixtureContext();
+    const l = phaseLever(ctx, "opening", "base", "down");
+    const opt = l.lines[0].options.find((o) => o.action === "remove")!;
+    const applied = withLines(ctx, linesAfterEdit(ctx, l.lines[0].lineId, 0));
+    const phase = analyze(applied).phases.phases.find((p) => p.key === "opening")!;
+    for (const a of opt.aroma) {
+      const real = phase.allFacets.find((f) => f.facet === a.facet)?.pct ?? 0;
+      expect(a.after).toBeCloseTo(real, 8);
+      expect(Math.abs(a.after - a.before)).toBeGreaterThanOrEqual(0.5);
+    }
+    expect(opt.aroma.length).toBeLessThanOrEqual(2);
+  });
+});

@@ -16,7 +16,6 @@ import type { Analysis } from "@/lib/calc/analyze";
 import { phaseLever } from "@/lib/calc/phaseAdjust";
 import { PHASE_META, PHASE_PRESENCE, type PhaseKey } from "@/lib/calc/phases";
 import type { BridgeStatus, BridgeSuggestion } from "@/lib/calc/bridge";
-import { FUNCTION_HINTS, SPL_NOTE, UNKNOWN_KEY } from "@/lib/calc/functions";
 import { fmtGram, fmtIdr, fmtNum, fmtPct } from "@/lib/calc/format";
 import { facetReducers } from "@/lib/calc/reduce";
 import { RULES_FOOTER, RULES_HEALTHY, type Warning } from "@/lib/calc/rules";
@@ -24,14 +23,7 @@ import type { FormulaContext, Pyramid, Tier } from "@/lib/calc/types";
 import { PYRAMID_TIERS, TIER_META, facetColor, facetLabel } from "@/lib/tiers";
 import { cn } from "@/lib/utils";
 
-type TabKey =
-  | "ringkasan"
-  | "aroma"
-  | "kekuatan"
-  | "fungsi"
-  | "pelarut"
-  | "hpp"
-  | "bridger";
+type TabKey = "ringkasan" | "aroma" | "bridger" | "kekuatan" | "hpp";
 
 const LEVEL: Record<
   Warning["level"],
@@ -104,7 +96,9 @@ export function WarningList({
                       ? `Normalisasi ${TIER_META[w.action.tier].label}`
                       : w.action.kind === "retarget_tier"
                         ? `Jadikan target ${fmtPct(w.action.target)}`
-                        : "Terapkan saran"}
+                        : w.action.kind === "move_line"
+                          ? `Pindah ke ${TIER_META[w.action.tier].label}`
+                          : "Terapkan saran"}
                   </Button>
                 )}
               </div>
@@ -293,6 +287,48 @@ function BoostPanel({
           ))}
         </ul>
       )}
+    </div>
+  );
+}
+
+/**
+ * Pelarut dalam satu kotak kecil — menggantikan tab Pelarut. Yang perlu
+ * terlihat sekilas cuma dua: berapa banyak totalnya, dan dari mana datangnya.
+ * Peringatan R3/R4 tetap muncul di daftar di bawahnya.
+ */
+function SolventSummary({ report }: { report: Analysis["solvents"] }) {
+  if (!report.rows.length) return null;
+  const sum = (xs: { pct: number }[]) => xs.reduce((a, x) => a + x.pct, 0);
+  return (
+    <div className="rounded-lg border border-[var(--border)] p-3">
+      <div className="flex items-baseline gap-2">
+        <span className="text-[13px] font-medium">Pelarut</span>
+        <span className="numeric ml-auto text-[15px] font-semibold">
+          {fmtPct(report.totalEffectivePct)}
+        </span>
+      </div>
+      <ul className="mt-1.5 space-y-1">
+        {report.rows.map((r) => {
+          const parts = [
+            r.directPct > 0 && `dituang ${fmtPct(r.directPct)}`,
+            sum(r.fromDilution) > 0 && `dari dilusi ${fmtPct(sum(r.fromDilution))}`,
+            sum(r.fromAccords) > 0 && `dari accord ${fmtPct(sum(r.fromAccords))}`,
+            sum(r.hiddenFromSupplier) > 0 &&
+              `bawaan pabrik ${fmtPct(sum(r.hiddenFromSupplier))}`,
+          ].filter(Boolean);
+          return (
+            <li key={r.solventId} className="text-[12px]">
+              <div className="flex items-baseline gap-2">
+                <span className="min-w-0 flex-1 truncate">{r.name}</span>
+                <span className="numeric font-medium">{fmtPct(r.effectiveTotal)}</span>
+              </div>
+              {parts.length > 0 && (
+                <p className="text-[11px] text-[var(--text-subtle)]">{parts.join(" · ")}</p>
+              )}
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }
@@ -680,27 +716,16 @@ type PhaseActions = {
   onSetPyramid?: (pyramid: Pyramid) => void;
 };
 
+/**
+ * Kekuatan = per fase. Satu angka per bahan untuk seluruh umur parfum tidak
+ * menjawab pertanyaan yang sebenarnya ditanyakan saat meracik — apa yang
+ * tercium kapan — jadi tampilan "Total" dihapus.
+ */
 function StrengthTab({
   analysis,
   ...actions
 }: { analysis: Analysis } & PhaseActions) {
-  const [view, setView] = useState<"total" | "fase">("total");
-
-  return (
-    <div className="space-y-3">
-      <Tabs value={view} onValueChange={(v) => setView(v as "total" | "fase")}>
-        <TabsList className="w-full">
-          <TabsTrigger value="total">Total</TabsTrigger>
-          <TabsTrigger value="fase">Per fase</TabsTrigger>
-        </TabsList>
-      </Tabs>
-      {view === "total" ? (
-        <StrengthTotal analysis={analysis} />
-      ) : (
-        <PhaseView report={analysis.phases} {...actions} />
-      )}
-    </div>
-  );
+  return <PhaseView report={analysis.phases} {...actions} />;
 }
 
 function PhaseView({
@@ -881,6 +906,36 @@ function PhaseView({
 }
 
 /**
+ * Efek aksi ke aroma fase itu — dua pergeseran terbesar. Porsi tier yang
+ * turun 4 poin belum menjawab "lalu baunya jadi apa".
+ */
+function AromaNote({ shifts }: { shifts: { facet: string; before: number; after: number }[] }) {
+  if (!shifts.length) {
+    return (
+      <span className="text-[10px] font-normal text-[var(--text-subtle)]">
+        aroma nyaris tidak berubah
+      </span>
+    );
+  }
+  return (
+    <span className="numeric text-[10px] font-normal text-[var(--text-muted)]">
+      {shifts.map((x, i) => (
+        <span key={x.facet}>
+          {i > 0 && " · "}
+          <span
+            className="font-medium"
+            style={{ color: `color-mix(in oklab, ${facetColor(x.facet)} 78%, var(--text))` }}
+          >
+            {facetLabel(x.facet)}
+          </span>{" "}
+          {fmtPct(x.before)} → {fmtPct(x.after)}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+/**
  * Atur porsi satu tier di satu fase. Dua tuas yang bisa disentuh dari resep:
  * berat tier (target piramida) dan kekuatan isinya (bahan & persennya).
  * Dihitung saat dibuka — tiap opsi membentangkan ulang formula.
@@ -921,8 +976,9 @@ function PhaseLeverPanel({
     <div className="ml-4 mt-1.5 space-y-2 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-2.5">
       <p className="text-[11px] leading-relaxed text-[var(--text-subtle)]">
         {direction === "down" ? "Menurunkan" : "Menaikkan"} {label} di{" "}
-        {phaseLabel}. Angkanya porsi {label} di fase ini setelah aksinya —
-        termasuk baris lain yang ikut dibagi ulang.
+        {phaseLabel}. Angka pertama porsi {label} di fase ini setelah aksinya —
+        termasuk baris lain yang ikut dibagi ulang; baris kedua aroma yang
+        paling bergeser di fase itu.
       </p>
 
       {lever.pyramidShifts && lever.pyramidShifts.length > 0 && onSetPyramid && (
@@ -941,8 +997,11 @@ function PhaseLeverPanel({
                   onDone();
                 }}
               >
-                <span className="numeric">
-                  {fmtNum(sh.pyramid.top)}/{fmtNum(sh.pyramid.mid)}/{fmtNum(sh.pyramid.base)} · {arrow(sh.afterPct)}
+                <span className="flex flex-col items-start">
+                  <span className="numeric">
+                    {fmtNum(sh.pyramid.top)}/{fmtNum(sh.pyramid.mid)}/{fmtNum(sh.pyramid.base)} · {arrow(sh.afterPct)}
+                  </span>
+                  <AromaNote shifts={sh.aroma} />
                 </span>
               </Button>
             ))}
@@ -973,8 +1032,11 @@ function PhaseLeverPanel({
                         onDone();
                       }}
                     >
-                      <span className="numeric">
-                        {o.action === "half" ? `Jadi ${fmtPct(o.newPct)}` : "Hapus"} · {arrow(o.afterPct)}
+                      <span className="flex flex-col items-start">
+                        <span className="numeric">
+                          {o.action === "half" ? `Jadi ${fmtPct(o.newPct)}` : "Hapus"} · {arrow(o.afterPct)}
+                        </span>
+                        <AromaNote shifts={o.aroma} />
                       </span>
                     </Button>
                   ))}
@@ -1002,6 +1064,7 @@ function PhaseLeverPanel({
                   <p className="numeric text-[11px] text-[var(--text-muted)]">
                     impact {c.impact} · di {fmtPct(c.dose)}: {arrow(c.afterPct)}
                   </p>
+                  <AromaNote shifts={c.aroma} />
                 </div>
                 <Button
                   type="button"
@@ -1028,194 +1091,6 @@ function PhaseLeverPanel({
         </p>
       )}
       <p className="text-[11px] text-[var(--text-subtle)]">Bisa dibatalkan dengan Undo.</p>
-    </div>
-  );
-}
-
-function StrengthTotal({ analysis }: { analysis: Analysis }) {
-  const rows = analysis.strength.rows;
-  const max = Math.max(1, ...rows.map((r) => r.strengthPct ?? 0));
-
-  return (
-    <div className="space-y-4">
-      <p className="text-[12px] leading-relaxed text-[var(--text-muted)]">
-        Batang abu = porsi berat. Batang berwarna = porsi kekuatan. Kalau yang
-        berwarna jauh lebih panjang, bahan itu mendominasi lebih dari yang
-        terlihat di resep.
-      </p>
-
-      <ul className="space-y-3">
-        {rows.map((r) => (
-          <li key={r.refId}>
-            <div className="mb-1 flex items-baseline justify-between gap-2">
-              <span className="truncate text-[13px] font-medium">
-                {r.name}
-                {r.via.length > 0 && (
-                  <span className="ml-1 text-[11px] font-normal text-[var(--text-subtle)]">
-                    via {r.via.join(" → ")}
-                  </span>
-                )}
-              </span>
-              <span className="numeric shrink-0 text-[12px] text-[var(--text-muted)]">
-                {fmtPct(r.productPct)} berat
-                {r.strengthPct != null && (
-                  <>
-                    {" · "}
-                    <strong className="text-[var(--text)]">
-                      {fmtPct(r.strengthPct)}
-                    </strong>
-                  </>
-                )}
-              </span>
-            </div>
-            <div
-              className="h-[5px] rounded-full bg-[var(--impact-low)]/55"
-              style={{ width: `${(r.productPct / 100) * 100}%` }}
-              aria-hidden
-            />
-            {r.strengthPct == null ? (
-              <p className="mt-1 text-[11px] italic text-[var(--text-subtle)]">
-                tidak dinilai — {r.kind === "fo" ? "isi FO tidak diketahui" : "pelarut"}
-              </p>
-            ) : (
-              <div
-                className="mt-1 h-[11px] rounded-full"
-                style={{
-                  width: `${Math.max(1, (r.strengthPct / max) * 100)}%`,
-                  backgroundColor: r.impactMissing
-                    ? "var(--impact-low)"
-                    : "var(--brand)",
-                }}
-                aria-hidden
-              />
-            )}
-          </li>
-        ))}
-      </ul>
-
-      <div className="border-t border-[var(--border)] pt-3">
-        <p className="mb-2 text-[13px] font-semibold">Piramida nyata</p>
-        <ul className="space-y-2">
-          {analysis.realPyramid.map((row) => {
-            const meta = TIER_META[row.tier];
-            return (
-              <li key={row.tier}>
-                <div className="mb-1 flex justify-between text-[12px]">
-                  <span className="font-medium">{meta.label}</span>
-                  <span className="numeric text-[var(--text-muted)]">
-                    target {fmtNum(row.target)} · terisi {fmtNum(row.filled)} ·{" "}
-                    <strong className="text-[var(--text)]">
-                      aktif {fmtNum(row.active)}
-                    </strong>
-                  </span>
-                </div>
-                <div className="h-2 overflow-hidden rounded-full bg-[var(--surface-muted)]">
-                  <div
-                    className="h-full rounded-full"
-                    style={{
-                      width: `${Math.min(100, row.active)}%`,
-                      backgroundColor: meta.color,
-                    }}
-                  />
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-        <p className="mt-2 text-[11px] text-[var(--text-subtle)]">
-          Aktif = bahan pewangi setelah pelarut dikeluarkan.
-        </p>
-      </div>
-    </div>
-  );
-}
-
-function SolventTab({
-  analysis,
-  onApply,
-}: {
-  analysis: Analysis;
-  onApply?: (solventId: string, newDirectPct: number) => void;
-}) {
-  const { rows, totalEffectivePct } = analysis.solvents;
-
-  if (!rows.length) {
-    return (
-      <p className="text-[13px] text-[var(--text-muted)]">
-        Belum ada pelarut di formula ini — tidak ada baris pelarut langsung,
-        tidak ada dilusi, dan tidak ada bahan yang sudah encer dari supplier.
-      </p>
-    );
-  }
-
-  return (
-    <div className="space-y-3">
-      {rows.map((row) => (
-        <div
-          key={row.solventId}
-          className="rounded-lg border border-[var(--border)] p-3"
-        >
-          <div className="flex items-baseline justify-between gap-2">
-            <span className="text-[13px] font-medium">{row.name}</span>
-            <span className="numeric text-[13px] font-semibold">
-              {fmtPct(row.effectiveTotal)}
-            </span>
-          </div>
-
-          <ul className="mt-2 space-y-0.5 text-[12px] text-[var(--text-muted)]">
-            {row.directPct > 0 && (
-              <li className="flex justify-between">
-                <span>ditambahkan langsung</span>
-                <span className="numeric">{fmtPct(row.directPct)}</span>
-              </li>
-            )}
-            {row.fromDilution.map((d, i) => (
-              <li key={`d${i}`} className="flex justify-between">
-                <span>dari dilusi {d.lineName}</span>
-                <span className="numeric">{fmtPct(d.pct)}</span>
-              </li>
-            ))}
-            {row.fromAccords.map((a, i) => (
-              <li key={`a${i}`} className="flex justify-between">
-                <span>dari {a.accordName}</span>
-                <span className="numeric">{fmtPct(a.pct)}</span>
-              </li>
-            ))}
-            {row.hiddenFromSupplier.map((h, i) => (
-              <li key={`h${i}`} className="flex justify-between italic">
-                <span>bawaan {h.materialName}</span>
-                <span className="numeric">{fmtPct(h.pct)}</span>
-              </li>
-            ))}
-          </ul>
-
-          {row.directPct > 0 && row.effectiveTotal > 10 && onApply && (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="mt-2"
-              onClick={() =>
-                onApply(
-                  row.solventId,
-                  Math.max(0, row.directPct - (row.effectiveTotal - 10)),
-                )
-              }
-            >
-              Turunkan baris langsung ke{" "}
-              {fmtPct(Math.max(0, row.directPct - (row.effectiveTotal - 10)))}
-            </Button>
-          )}
-        </div>
-      ))}
-
-      <p className="text-[12px] text-[var(--text-muted)]">
-        Total semua pelarut:{" "}
-        <strong className="numeric text-[var(--text)]">
-          {fmtPct(totalEffectivePct)}
-        </strong>{" "}
-        dari formula.
-      </p>
     </div>
   );
 }
@@ -1650,7 +1525,6 @@ export function AnalysisPanel({
   context,
   onWarningAction,
   onAddBridge,
-  onApplySolvent,
   onlyStock = false,
   onOnlyStockChange,
   onReduceLine,
@@ -1660,7 +1534,6 @@ export function AnalysisPanel({
   context: FormulaContext;
   onWarningAction?: (w: Warning) => void;
   onAddBridge?: (materialId: string, tier: Tier, dose: number) => void;
-  onApplySolvent?: (solventId: string, newDirectPct: number) => void;
   /** saran bridger/diffuser/fixative hanya dari bahan yang ada di stok */
   onlyStock?: boolean;
   /** tanpa ini filternya tidak ditampilkan — halaman baca tidak punya saran */
@@ -1697,17 +1570,16 @@ export function AnalysisPanel({
             )}
           </TabsTrigger>
           <TabsTrigger value="aroma">Aroma</TabsTrigger>
-          <TabsTrigger value="kekuatan">Kekuatan</TabsTrigger>
-          <TabsTrigger value="fungsi">Fungsi</TabsTrigger>
-          <TabsTrigger value="pelarut">Pelarut</TabsTrigger>
-          <TabsTrigger value="hpp">HPP</TabsTrigger>
           <TabsTrigger value="bridger">Kepaduan</TabsTrigger>
+          <TabsTrigger value="kekuatan">Kekuatan</TabsTrigger>
+          <TabsTrigger value="hpp">HPP</TabsTrigger>
         </TabsList>
       </Tabs>
 
       {tab === "ringkasan" && (
         <div className="space-y-3">
           <SplCard spl={analysis.spl} />
+          <SolventSummary report={analysis.solvents} />
           {/* Empat angka yang dulu jadi kotak besar, sekarang satu baris:
               tetap terlihat sekilas, tanpa merebut tempat dari SPL. */}
           <p className="numeric text-[12px] text-[var(--text-muted)]">
@@ -1736,10 +1608,6 @@ export function AnalysisPanel({
           onReduce={onReduceLine}
           onSetPyramid={onSetPyramid}
         />
-      )}
-      {tab === "fungsi" && <FunctionTab analysis={analysis} />}
-      {tab === "pelarut" && (
-        <SolventTab analysis={analysis} onApply={onApplySolvent} />
       )}
       {tab === "hpp" && (
         <CostTab analysis={analysis} batchG={context.version.batchG} />
@@ -1789,112 +1657,4 @@ export function AnalysisPanel({
   );
 }
 
-/**
- * Komposisi peran bahan.
- *
- * Menjawab pertanyaan yang tidak dijawab panel lain: apakah formula ini punya
- * yang membawanya keluar dari kulit, dan punya yang menahannya supaya tidak
- * hilang duluan. Sengaja cuma memperlihatkan — tidak ada "porsi yang benar"
- * untuk diberitahukan, karena memang tidak ada.
- */
-function FunctionTab({ analysis }: { analysis: Analysis }) {
-  const mix = analysis.functions;
-
-  if (!mix.rows.length) {
-    return (
-      <p className="text-[13px] text-[var(--text-muted)]">
-        Belum ada bahan pewangi yang bisa dinilai. Pelarut dan FO tidak dihitung
-        di sini.
-      </p>
-    );
-  }
-
-  const color: Record<string, string> = {
-    diffuser: "var(--facet-citrus, #e0a93b)",
-    modifier: "var(--brand)",
-    bridger: "var(--facet-floral, #c2559b)",
-    fixative: "var(--facet-woody, #8a6d2f)",
-    [UNKNOWN_KEY]: "var(--text-subtle)",
-  };
-
-  return (
-    <div className="space-y-3">
-      {/* Satu batang utuh: proporsi antar peran lebih mudah dibaca
-          berdampingan daripada sebagai lima angka terpisah. */}
-      <div className="flex h-2.5 overflow-hidden rounded-full bg-[var(--surface-muted)]">
-        {mix.rows.map((row) => (
-          <span
-            key={row.key}
-            className="block h-full first:rounded-l-full last:rounded-r-full"
-            style={{
-              width: `${row.pct}%`,
-              backgroundColor: color[row.key] ?? "var(--text-subtle)",
-            }}
-            title={`${row.label} ${fmtPct(row.pct)}`}
-          />
-        ))}
-      </div>
-
-      <ul className="divide-y divide-[var(--border)]">
-        {mix.rows.map((row) => (
-          <li key={row.key} className="py-2.5 first:pt-0">
-            <div className="flex items-baseline gap-2">
-              <span
-                aria-hidden
-                className="size-2 shrink-0 rounded-full"
-                style={{ backgroundColor: color[row.key] ?? "var(--text-subtle)" }}
-              />
-              <span className="text-[13px] font-medium">{row.label}</span>
-              <span className="numeric ml-auto text-[13px] font-semibold">
-                {fmtPct(row.pct)}
-              </span>
-              <span className="numeric w-20 text-[12px] text-[var(--text-muted)]">
-                {fmtPct(row.strengthPct)} kekuatan
-              </span>
-            </div>
-
-            {FUNCTION_HINTS[row.key] && (
-              <p className="ml-4 text-[11px] text-[var(--text-subtle)]">
-                {FUNCTION_HINTS[row.key]}
-              </p>
-            )}
-            <p className="ml-4 text-[11px] leading-relaxed text-[var(--text-muted)]">
-              {row.materials.join(" · ")}
-            </p>
-          </li>
-        ))}
-      </ul>
-
-      <p className="rounded-lg bg-[var(--surface-muted)] px-3 py-2 text-[11px] leading-relaxed text-[var(--text-muted)]">
-        {SPL_NOTE}
-      </p>
-
-      {/* Ke mana sisa persennya pergi — supaya tidak dicari-cari. */}
-      <p className="border-t border-[var(--border)] pt-2 text-[11px] leading-relaxed text-[var(--text-subtle)]">
-        Persen dihitung dari bahan pewangi saja.
-        {mix.excluded.solventPct > 0 && (
-          <> Pelarut {fmtPct(mix.excluded.solventPct)} tidak ikut.</>
-        )}
-        {mix.excluded.foPct > 0 && (
-          <> FO {fmtPct(mix.excluded.foPct)} tidak ikut — isinya tidak diketahui.</>
-        )}
-        {mix.derivedPct > 0.05 && (
-          <>
-            {" "}
-            {fmtPct(mix.derivedPct)} dari angka di atas masih TEBAKAN dari family
-            bahannya, bukan data supplier. Koreksi di halaman bahan kalau tidak
-            cocok.
-          </>
-        )}
-        {mix.coverage + mix.derivedPct < 99.95 && (
-          <>
-            {" "}
-            {fmtPct(100 - mix.coverage - mix.derivedPct)} bahan tidak bisa
-            ditebak kategorinya sama sekali.
-          </>
-        )}
-      </p>
-    </div>
-  );
-}
 

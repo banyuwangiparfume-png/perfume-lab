@@ -180,6 +180,17 @@ export function suggestBridges(
 
   for (const material of ctx.materials.values()) {
     if (!material.isBridgeCandidate) continue;
+    // Padukan dalam satu tier memaksa tujuannya ke tier itu. Bahan yang
+    // kebiasaannya tier lain tidak ditawarkan — kalau ditawarkan, R7 akan
+    // menandai saran aplikasi sendiri sebagai salah tempat.
+    if (
+      opts.forceTier &&
+      opts.forceTier !== "all" &&
+      material.noteTierHint &&
+      material.noteTierHint !== opts.forceTier
+    ) {
+      continue;
+    }
     if (excludeIds.has(material.id)) continue;
     if (onlyStock && !ctx.stock.has(material.id)) continue;
     if (!Object.keys(material.facets).length) continue;
@@ -264,7 +275,13 @@ export function recommendTier(
   material: Material | undefined,
   pair: [Tier, Tier],
 ): Tier {
-  if (pair[0] === "top" && pair[1] === "mid") return "mid";
+  // Bahan ber-hint Top tetap di Top: dia menguap bersama Top, dan menaruhnya
+  // di Mid membuat aplikasi menyarankan sesuatu lalu langsung menandainya
+  // sendiri lewat R7 ("biasanya top, sekarang di Mid"). Yang lain ke Mid —
+  // jembatan Top↔Mid bekerja di sana.
+  if (pair[0] === "top" && pair[1] === "mid") {
+    return material?.noteTierHint === "top" ? "top" : "mid";
+  }
 
   if (pair[0] === "mid" && pair[1] === "base") {
     const hint = material?.noteTierHint;
