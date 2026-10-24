@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { liftsOf, previewFacetShift } from "../roles";
+import { previewFacetShift } from "../roles";
 import type { ExpandedItem, Material } from "../types";
 
 const material = (
@@ -67,27 +67,5 @@ describe("pratinjau sebelum → sesudah", () => {
     const copy = [...items];
     previewFacetShift(items, materials, materials.get("hedione")!, 10, "mid", "floral");
     expect(items).toEqual(copy);
-  });
-});
-
-describe("searah dengan", () => {
-  it("mengurutkan dari yang paling mirip dan membuang yang di bawah ambang", () => {
-    const m = new Map([
-      ["a", material("a", { floral: 1 })],
-      ["b", material("b", { floral: 0.6, woody: 0.8 })],
-      ["c", material("c", { woody: 1 })],
-      ["x", material("x", { floral: 1 })],
-    ]);
-    const lifts = liftsOf(m.get("x")!, [item("a", 10), item("b", 10), item("c", 10)], m, "all");
-    expect(lifts.map((l) => l.refId)).toEqual(["a", "b"]);
-  });
-
-  it("menghormati scope tier", () => {
-    const m = new Map([
-      ["a", material("a", { floral: 1 })],
-      ["x", material("x", { floral: 1 })],
-    ]);
-    expect(liftsOf(m.get("x")!, [item("a", 10, "base")], m, "top")).toEqual([]);
-    expect(liftsOf(m.get("x")!, [item("a", 10, "base")], m, "base")).toHaveLength(1);
   });
 });

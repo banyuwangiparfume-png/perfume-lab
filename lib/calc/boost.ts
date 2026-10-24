@@ -41,6 +41,10 @@ export type BoostSuggestion = {
 
 export type FacetBoosts = Record<string, Record<BoostRole, BoostSuggestion[]>>;
 
+/** Tier tempat sebuah bahan menguap — fixative selalu Base. */
+const naturalTier = (m: Material, role: BoostRole): Tier =>
+  role === "fixative" ? "base" : (m.noteTierHint ?? "mid");
+
 /** Bahan baru dianggap membawa facet ini kalau bobotnya minimal segini. */
 const MIN_FACET_WEIGHT = 0.35;
 /** Kenaikan minimal (poin persen) supaya layak disebut menaikkan. */
@@ -50,9 +54,20 @@ export function facetBoosts(
   ctx: FormulaContext,
   items: ExpandedItem[],
   facets: string[],
-  opts: { onlyStock?: boolean; totalScore?: number; limit?: number } = {},
+  opts: {
+    onlyStock?: boolean;
+    totalScore?: number;
+    limit?: number;
+    /**
+     * Pie yang mau dinaikkan: seluruh formula, atau satu tier. Untuk satu
+     * tier, yang disarankan hanya bahan yang memang menguap di tier itu —
+     * bahan Top tidak akan menaikkan Woody di Mid, karena dia sudah habis
+     * sebelum Mid tercium.
+     */
+    scope?: Tier;
+  } = {},
 ): FacetBoosts {
-  const { onlyStock = false, limit = 5 } = opts;
+  const { onlyStock = false, limit = 5, scope = "all" } = opts;
   const used = new Set(
     items.filter((i) => i.kind === "material").map((i) => i.refId),
   );
@@ -76,7 +91,8 @@ export function facetBoosts(
         .filter(
           (m) =>
             (m.functionCategory ?? "").toLowerCase() === role &&
-            (m.facets[facet] ?? 0) >= MIN_FACET_WEIGHT,
+            (m.facets[facet] ?? 0) >= MIN_FACET_WEIGHT &&
+            (scope === "all" || naturalTier(m, role) === scope),
         )
         .sort(
           (a, b) =>
@@ -91,11 +107,10 @@ export function facetBoosts(
           totalScore: opts.totalScore,
           settings: ctx.settings,
         });
-        // Penahan ke Base, sama dengan tab Fixative. Yang lain ke kebiasaan
-        // bahannya — tier itu kecepatan menguap, bukan pilihan.
-        const tier: Tier =
-          role === "fixative" ? "base" : (m.noteTierHint ?? "mid");
-        const p = previewFacetShift(items, ctx.materials, m, dose, tier, facet);
+        // Penahan ke Base. Yang lain ke kebiasaan bahannya — tier itu
+        // kecepatan menguap, bukan pilihan.
+        const tier = naturalTier(m, role);
+        const p = previewFacetShift(items, ctx.materials, m, dose, tier, facet, scope);
         if (p.afterPct - p.beforePct < MIN_GAIN) continue;
         list.push({
           materialId: m.id,

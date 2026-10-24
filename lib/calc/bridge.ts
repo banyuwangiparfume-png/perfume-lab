@@ -1,6 +1,7 @@
 import { normalizeL2, tierVector } from "./aroma";
 import { expand } from "./expand";
 import { strengthOf } from "./strength";
+import { syntheticItem } from "./synthetic";
 import {
   TIERS,
   type ExpandedItem,
@@ -59,7 +60,14 @@ export type BridgeSuggestion = {
   starterDose: number;
   /** tier tujuan kalau saran ini ditambahkan */
   tier: Tier;
+  /**
+   * Skor setelah bahan ini ditambahkan pada dosis awalnya: kemiripan antar
+   * tier untuk saran antar tier, kepaduan tier untuk saran dalam tier.
+   * Kosong kalau belum dihitung.
+   */
+  after?: number;
 };
+
 
 /** Dosis awal: bahan kuat dimulai setengahnya, supaya tidak kedengaran sendiri. */
 /** Dipakai kalau pemanggil tidak membawa settings. */
@@ -305,15 +313,30 @@ export function crossTierBridges(
       sim: s,
       status,
       comparable,
-      // Tier yang sehat tidak perlu saran — menampilkannya mengaburkan mana
-      // yang benar-benar perlu dikerjakan. Tier yang masih kosong juga tidak:
-      // tidak ada arah yang bisa dijembatani, dan sarannya akan asal.
-      suggestions:
-        !comparable || status === "connected"
-          ? []
-          : suggestBridges(vectors[x], vectors[y], ctx, exclude, {
-              ...opts,
-              pair: [x, y],
+      // Tier yang masih kosong tidak diberi saran: tidak ada arah yang bisa
+      // dijembatani, dan sarannya akan asal. Yang sudah nyambung tetap boleh
+      // — daftarnya tertutup sampai dibuka, jadi tidak mengaburkan yang perlu.
+      //
+      // Urutannya TETAP dari skor jembatan (yang dikunci fixture), bukan dari
+      // kenaikan. `after` cuma keterangan: saran yang tidak menaikkan skor
+      // pada dosis awalnya ditandai di layar, bukan dibuang diam-diam —
+      // jembatan yang baik kadang baru terasa setelah dosisnya dinaikkan.
+      suggestions: !comparable
+        ? []
+        : suggestBridges(vectors[x], vectors[y], ctx, exclude, {
+            ...opts,
+            pair: [x, y],
+          })
+            .map((sg) => {
+              const m = ctx.materials.get(sg.materialId)!;
+              const next = [...items, syntheticItem(m, sg.starterDose, sg.tier)];
+              return {
+                ...sg,
+                after: sim(
+                  tierVector(next, ctx.materials, x),
+                  tierVector(next, ctx.materials, y),
+                ),
+              };
             }),
     };
   });
@@ -332,6 +355,35 @@ export type TierCohesion = {
   outlier: { lineId: string; name: string; sim: number } | null;
   suggestions: BridgeSuggestion[];
 };
+
+/**
+ * Kepaduan sekumpulan arah: rata-rata kemiripan tiap anggota dengan gabungan
+ * anggota LAIN. Memasukkan dirinya sendiri ke pembanding membuat yang besar
+ * selalu terlihat menyatu dan yang kecil selalu terlihat menyimpang.
+ */
+export function cohesionOf(members: FacetVector[]): {
+  cohesion: number;
+  sims: number[];
+  worstIndex: number;
+} {
+  const sims = members.map((v, i) => {
+    const rest: FacetVector = {};
+    members.forEach((o, j) => {
+      if (j === i) return;
+      for (const [f, w] of Object.entries(o)) rest[f] = (rest[f] ?? 0) + w;
+    });
+    return sim(v, normalizeL2(rest));
+  });
+  let worstIndex = 0;
+  sims.forEach((x, i) => {
+    if (x < sims[worstIndex]) worstIndex = i;
+  });
+  return {
+    cohesion: sims.length ? sims.reduce((a, b) => a + b, 0) / sims.length : 0,
+    sims,
+    worstIndex,
+  };
+}
 
 /** Vektor satu baris: bahan pakai facet-nya, accord pakai gabungan isinya. */
 function lineVector(
@@ -434,43 +486,29 @@ export function tierCohesionReport(
         : (ctx.materials.get(l.refId)?.name ?? "bahan");
     };
 
-    // Tiap bahan dibandingkan dengan gabungan bahan LAIN. Memasukkan dirinya
-    // sendiri ke pembanding membuat bahan yang porsinya besar selalu terlihat
-    // menyatu, dan yang kecil selalu terlihat menyimpang.
-    let worst: { lineId: string; name: string; sim: number } | null = null;
-    let total = 0;
-
-    for (const line of scored) {
-      const rest: FacetVector = {};
-      for (const other of scored) {
-        if (other.id === line.id) continue;
-        for (const [f, w] of Object.entries(vectors.get(other.id) ?? {})) {
-          rest[f] = (rest[f] ?? 0) + w;
-        }
-      }
-
-      const s = sim(vectors.get(line.id) ?? {}, normalizeL2(rest));
-      total += s;
-      if (!worst || s < worst.sim) {
-        worst = { lineId: line.id, name: nameOf(line.id), sim: s };
-      }
-    }
-
-    const cohesion = total / scored.length;
+    const members = scored.map((l) => vectors.get(l.id) ?? {});
+    const c = cohesionOf(members);
+    const worstLine = scored[c.worstIndex];
+    const worst = {
+      lineId: worstLine.id,
+      name: nameOf(worstLine.id),
+      sim: c.sims[c.worstIndex],
+    };
+    const cohesion = c.cohesion;
     const status = bridgeStatus(cohesion, ctx.settings.bridgeThresholds);
 
-    // Hanya bahan yang benar-benar menyendiri yang ditawari jembatan. Kalau
-    // tiernya sudah menyatu, bahan "paling tidak mirip" tetap bukan masalah.
+    // Yang DISEBUT menyendiri cuma bahan yang benar-benar jauh. Kalau
+    // tiernya sudah menyatu, bahan "paling tidak mirip" bukan masalah.
     const needsHelp =
-      worst && bridgeStatus(worst.sim, ctx.settings.bridgeThresholds) === "gap";
+      bridgeStatus(worst.sim, ctx.settings.bridgeThresholds) === "gap";
 
+    // Saran dicari di antara bahan paling jauh dan sisanya — tempat jembatan
+    // paling berguna. Urutannya dari skor jembatan; `after` keterangan.
     const restOfTier: FacetVector = {};
-    if (needsHelp && worst) {
-      for (const other of scored) {
-        if (other.id === worst.lineId) continue;
-        for (const [f, w] of Object.entries(vectors.get(other.id) ?? {})) {
-          restOfTier[f] = (restOfTier[f] ?? 0) + w;
-        }
+    for (const other of scored) {
+      if (other.id === worst.lineId) continue;
+      for (const [f, w] of Object.entries(vectors.get(other.id) ?? {})) {
+        restOfTier[f] = (restOfTier[f] ?? 0) + w;
       }
     }
 
@@ -479,16 +517,22 @@ export function tierCohesionReport(
       cohesion,
       status,
       outlier: needsHelp ? worst : null,
-      suggestions:
-        needsHelp && worst
-          ? suggestBridges(
-              vectors.get(worst.lineId) ?? {},
-              normalizeL2(restOfTier),
-              ctx,
-              exclude,
-              { ...opts, forceTier: tier },
-            )
-          : [],
+      suggestions: suggestBridges(
+        vectors.get(worst.lineId) ?? {},
+        normalizeL2(restOfTier),
+        ctx,
+        exclude,
+        { ...opts, forceTier: tier },
+      )
+        .map((sg) => ({
+          ...sg,
+          // Kepaduan memakai ARAH tiap baris, bukan kekuatannya — jadi
+          // dosisnya tidak menggeser angka ini, cuma kehadirannya.
+          after: cohesionOf([
+            ...members,
+            ctx.materials.get(sg.materialId)?.facets ?? {},
+          ]).cohesion,
+        })),
     });
   }
 

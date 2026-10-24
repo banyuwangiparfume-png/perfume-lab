@@ -7,8 +7,7 @@ import {
 } from "./bridge";
 import { costBreakdown, type CostBreakdown } from "./cost";
 import { expand, ExpandError, mergeByMaterial, type MergedItem } from "./expand";
-import { roleReport, type RoleReport } from "./roles";
-import { functionMix, shareOf, type FunctionMix } from "./functions";
+import { functionMix, type FunctionMix } from "./functions";
 import { lineTable, type LineTable } from "./lines";
 import { phaseReport, type PhaseReport } from "./phases";
 import { splScore, type SplScore } from "./spl";
@@ -33,18 +32,14 @@ export type Analysis = {
   phases: PhaseReport;
   /** perkiraan sillage/projection/longevity dari susunan — bukan pengukuran */
   spl: SplScore;
-  /** saran per irisan aroma: modifier / diffuser / fixative yang menaikkannya */
-  boosts: FacetBoosts;
+  /**
+   * Saran per irisan aroma: modifier / diffuser / fixative yang menaikkannya.
+   * Per pie, sama dengan `aroma`: seluruh formula, dan tiap tier kalau
+   * piramida aktif.
+   */
+  boosts: Record<Tier, FacetBoosts>;
   /** komposisi peran bahan: diffuser / modifier / bridger / fixative */
   functions: FunctionMix;
-  /**
-   * Saran penguat proyeksi, per sasaran: `all` searah formula keseluruhan,
-   * `top`/`mid`/`base` searah tier itu saja. Tier diisi hanya kalau mode
-   * piramida aktif — bentuknya sama dengan `aroma`.
-   */
-  diffusers: Record<Tier, RoleReport>;
-  /** saran penahan drydown, dengan kriteria yang sama */
-  fixatives: RoleReport;
   realPyramid: RealPyramidRow[];
   aroma: Record<Tier, AromaPie>;
   solvents: SolventReport;
@@ -62,8 +57,6 @@ export type AnalyzeOptions = {
   /** bridge engine paling mahal; editor bisa mematikannya saat mengetik */
   skipBridges?: boolean;
 };
-
-const PYRAMID_SCOPES: Tier[] = ["top", "mid", "base"];
 
 const emptyPie = (): AromaPie => ({
   slices: [],
@@ -142,46 +135,9 @@ export function analyze(
           }),
         };
 
-  // Porsinya murah dihitung dan selalu berguna; yang mahal cuma pencarian
-  // sarannya, jadi hanya itu yang ikut dimatikan saat mengetik.
-  const quickRole = (
-    role: "diffuser" | "fixative",
-    scope: Tier = "all",
-  ): RoleReport => ({
-    role,
-    scope,
-    sharePct: shareOf(functions, role),
-    present: [],
-    suggestions: [],
-  });
-
+  // Saran "Tingkatkan" mahal, jadi ikut dimatikan saat mengetik.
   const skipRoles = opts.skipBridges || expandError;
 
-  const diffuserFor = (scope: Tier) =>
-    skipRoles
-      ? quickRole("diffuser", scope)
-      : roleReport(ctx, items, functions, "diffuser", {
-          onlyStock: opts.onlyStockBridges,
-          totalScore: strength.totalScore,
-          scope,
-        });
-
-  const diffusers: Record<Tier, RoleReport> = {
-    all: diffuserFor("all"),
-    top: quickRole("diffuser", "top"),
-    mid: quickRole("diffuser", "mid"),
-    base: quickRole("diffuser", "base"),
-  };
-  if (ctx.version.pyramid) {
-    for (const t of PYRAMID_SCOPES) diffusers[t] = diffuserFor(t);
-  }
-
-  const fixatives = skipRoles
-    ? quickRole("fixative")
-    : roleReport(ctx, items, functions, "fixative", {
-        onlyStock: opts.onlyStockBridges,
-        totalScore: strength.totalScore,
-      });
 
   return {
     items,
@@ -193,17 +149,24 @@ export function analyze(
     // Dihitung untuk irisan yang tampil di pie seluruh formula saja — itu
     // yang bisa diklik user. Ikut dimatikan saat mengetik, sama dengan saran
     // lain yang mahal.
-    boosts: skipRoles
-      ? {}
-      : facetBoosts(
-          ctx,
-          items,
-          aroma.all.slices.map((x) => x.facet),
-          { onlyStock: opts.onlyStockBridges, totalScore: strength.totalScore },
-        ),
+    boosts: Object.fromEntries(
+      (["all", "top", "mid", "base"] as Tier[]).map((t) => [
+        t,
+        skipRoles || (t !== "all" && !ctx.version.pyramid)
+          ? {}
+          : facetBoosts(
+              ctx,
+              items,
+              aroma[t].slices.map((x) => x.facet),
+              {
+                onlyStock: opts.onlyStockBridges,
+                totalScore: strength.totalScore,
+                scope: t,
+              },
+            ),
+      ]),
+    ) as Record<Tier, FacetBoosts>,
     functions,
-    diffusers,
-    fixatives,
     realPyramid: pyramid,
     aroma,
     solvents,

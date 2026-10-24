@@ -269,11 +269,17 @@ describe("kepaduan tier menggantikan perbandingan antar pasangan", () => {
     }
   });
 
-  it("tier yang sudah menyatu tidak menawarkan apa pun", () => {
-    // Bahan "paling tidak mirip" di tier yang sehat tetap bukan masalah:
-    // kontras itu cara membuat accord menarik, bukan cacat yang harus ditambal.
+  it("tier yang sehat tidak menunjuk bahan menyendiri, tapi tetap boleh dipadukan", () => {
+    // Bahan "paling tidak mirip" di tier yang sehat bukan masalah — kontras
+    // itu cara membuat accord menarik — jadi dia tidak disebut menyendiri.
+    // Saran tetap ditawarkan (dibuka lewat "Padukan"), dengan perkiraan
+    // kepaduan setelahnya.
     for (const t of result.bridges.withinTier) {
-      if (t.outlier === null) expect(t.suggestions).toHaveLength(0);
+      if (t.status === "connected") expect(t.outlier).toBeNull();
+      for (const sg of t.suggestions) {
+        expect(sg.after).toBeGreaterThanOrEqual(0);
+        expect(sg.after).toBeLessThanOrEqual(1);
+      }
     }
   });
 
@@ -311,5 +317,49 @@ describe("tier kosong bukan jurang", () => {
     for (const pair of result.bridges.crossTier) {
       expect(pair.comparable).toBe(true);
     }
+  });
+});
+
+describe("perkiraan skor setelah dipadukan", () => {
+  it("saran antar tier: sama persis dengan kemiripan setelah bahannya benar-benar ditambahkan", () => {
+    const c = fixtureContext();
+    const before = analyze(c);
+    const pair = before.bridges.crossTier.find((p) => p.suggestions.length > 0)!;
+    const sg = pair.suggestions[0];
+
+    c.version.lines.push({
+      id: "padukan-uji",
+      tier: sg.tier,
+      kind: "raw_material",
+      refId: sg.materialId,
+      pct: sg.starterDose,
+      locked: true,
+      userDilutionPct: 100,
+      userSolventId: null,
+    });
+    const after = analyze(c).bridges.crossTier.find(
+      (p) => p.pair[0] === pair.pair[0] && p.pair[1] === pair.pair[1],
+    )!;
+    expect(sg.after).toBeCloseTo(after.sim, 6);
+  });
+
+  it("saran dalam tier: sama persis dengan kepaduan setelah bahannya ditambahkan", () => {
+    const c = fixtureContext();
+    const before = analyze(c);
+    const t = before.bridges.withinTier.find((x) => x.suggestions.length > 0)!;
+    const sg = t.suggestions[0];
+
+    c.version.lines.push({
+      id: "padukan-uji",
+      tier: t.tier,
+      kind: "raw_material",
+      refId: sg.materialId,
+      pct: sg.starterDose,
+      locked: true,
+      userDilutionPct: 100,
+      userSolventId: null,
+    });
+    const after = analyze(c).bridges.withinTier.find((x) => x.tier === t.tier)!;
+    expect(sg.after).toBeCloseTo(after.cohesion, 6);
   });
 });

@@ -100,7 +100,28 @@ describe("saran per irisan aroma", () => {
   it("analyze() menghitungnya untuk irisan pie, dan melewatinya saat mengetik", () => {
     const c = fixtureContext();
     const full = analyze(c);
-    expect(Object.keys(full.boosts).sort()).toEqual(full.aroma.all.slices.map((s) => s.facet).sort());
-    expect(analyze(c, { skipBridges: true }).boosts).toEqual({});
+    expect(Object.keys(full.boosts.all).sort()).toEqual(full.aroma.all.slices.map((s) => s.facet).sort());
+    for (const t of ["top", "mid", "base"] as const) {
+      expect(Object.keys(full.boosts[t]).sort()).toEqual(full.aroma[t].slices.map((s) => s.facet).sort());
+    }
+    expect(analyze(c, { skipBridges: true }).boosts.all).toEqual({});
+  });
+});
+
+describe("tingkatkan per tier", () => {
+  it("hanya menyarankan bahan yang menguap di tier itu, dan mengukur pie tier itu", () => {
+    const ctx = ctxOf([
+      ...formula,
+      mat("woodTop", { facets: { woody: 1 }, noteTierHint: "top" }),
+      mat("woodMid", { facets: { woody: 1 }, noteTierHint: "mid" }),
+    ]);
+    const mid = facetBoosts(ctx, items, ["woody"], { scope: "mid" }).woody.modifier;
+    expect(mid.map((s) => s.materialId)).toEqual(["woodMid"]);
+    expect(mid[0].tier).toBe("mid");
+  });
+
+  it("fixative hanya muncul di Base", () => {
+    const ctx = ctxOf([...formula, mat("fx", { facets: { woody: 1 }, functionCategory: "fixative" })]);
+    expect(facetBoosts(ctx, items, ["woody"], { scope: "mid" }).woody.fixative).toEqual([]);
   });
 });

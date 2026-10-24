@@ -14,7 +14,6 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { Analysis } from "@/lib/calc/analyze";
 import { PHASE_META } from "@/lib/calc/phases";
-import type { RoleReport } from "@/lib/calc/roles";
 import type { BridgeStatus, BridgeSuggestion } from "@/lib/calc/bridge";
 import { FUNCTION_HINTS, SPL_NOTE, UNKNOWN_KEY } from "@/lib/calc/functions";
 import { fmtGram, fmtIdr, fmtNum, fmtPct } from "@/lib/calc/format";
@@ -28,8 +27,6 @@ type TabKey =
   | "aroma"
   | "kekuatan"
   | "fungsi"
-  | "diffuser"
-  | "fixative"
   | "pelarut"
   | "hpp"
   | "bridger";
@@ -132,11 +129,13 @@ const BOOST_TABS = [
  */
 function BoostPanel({
   facet,
+  scope,
   boosts,
   onAdd,
 }: {
   facet: string;
-  boosts: Analysis["boosts"][string];
+  scope: "all" | Tier;
+  boosts: Analysis["boosts"]["all"][string];
   onAdd: (materialId: string, tier: Tier, dose: number) => void;
 }) {
   const [role, setRole] = useState<(typeof BOOST_TABS)[number]["key"]>(
@@ -160,13 +159,15 @@ function BoostPanel({
         </TabsList>
       </Tabs>
       <p className="text-[11px] text-[var(--text-subtle)]">
-        {tab.label} {facetLabel(facet)} — {tab.hint}.
+        {tab.label} {facetLabel(facet)}
+        {scope !== "all" && ` di ${TIER_META[scope].label}`} — {tab.hint}.
       </p>
 
       {list.length === 0 ? (
         <p className="text-[12px] text-[var(--text-muted)]">
-          Tidak ada {tab.label.toLowerCase()} berarah {facetLabel(facet)} yang
-          benar-benar menggeser irisan ini.
+          {scope !== "all" && role === "fixative" && scope !== "base"
+            ? "Fixative tempatnya di Base — yang menahan harus ada di lapisan yang paling lambat menguap."
+            : `Tidak ada ${tab.label.toLowerCase()} berarah ${facetLabel(facet)}${scope !== "all" ? ` yang menguap di ${TIER_META[scope].label}` : ""} yang benar-benar menggeser irisan ini.`}
         </p>
       ) : (
         <ul className="space-y-1.5">
@@ -321,6 +322,7 @@ function AromaTab({
   // Irisan yang sedang dibuka saran "naikkan"-nya. Satu saja sekaligus —
   // dua daftar saran yang terbuka bersamaan sulit dibandingkan.
   const [boosting, setBoosting] = useState<string | null>(null);
+  const boostsHere = analysis.boosts[scope as Tier] ?? {};
   const pie = analysis.aroma[scope as Tier] ?? analysis.aroma.all;
   const slices = [
     ...pie.slices.map((s) => ({
@@ -429,9 +431,9 @@ function AromaTab({
                 }}
               />
               <span className="flex-1">{s.name}</span>
-              {/* Saran hanya untuk pie seluruh formula: dosis dan kenaikannya
-                  dihitung terhadap formula utuh, bukan satu tier. */}
-              {scope === "all" && onAdd && analysis.boosts[s.key] && (
+              {/* Untuk pie satu tier, yang disarankan hanya bahan yang
+                  menguap di tier itu, dan kenaikannya diukur di pie tier itu. */}
+              {onAdd && boostsHere[s.key] && (
                 <button
                   type="button"
                   onClick={() => setBoosting(boosting === s.key ? null : s.key)}
@@ -443,7 +445,7 @@ function AromaTab({
                       : "text-[var(--text-muted)] hover:bg-[var(--surface-muted)] hover:text-[var(--text)]",
                   )}
                 >
-                  Naikkan
+                  Tingkatkan
                   <ChevronDown
                     className={cn(
                       "size-3 transition-transform",
@@ -500,10 +502,11 @@ function AromaTab({
               </p>
             )}
 
-            {boosting === s.key && onAdd && analysis.boosts[s.key] && (
+            {boosting === s.key && onAdd && boostsHere[s.key] && (
               <BoostPanel
                 facet={s.key}
-                boosts={analysis.boosts[s.key]}
+                scope={scope}
+                boosts={boostsHere[s.key]}
                 onAdd={onAdd}
               />
             )}
@@ -933,254 +936,360 @@ function CostTab({ analysis, batchG }: { analysis: Analysis; batchG: number }) {
   );
 }
 
-function BridgeTab({
+const STATUS_TONE = {
+  connected: "bg-[var(--ok-soft)] text-[var(--ok)]",
+  loose: "bg-[var(--warn-soft)] text-[var(--warn)]",
+  gap: "bg-[var(--danger-soft)] text-[var(--danger)]",
+} as const;
+const STATUS_TEXT = {
+  connected: "Nyambung",
+  loose: "Renggang",
+  gap: "Jurang",
+} as const;
+const STATUS_DOT = {
+  connected: "var(--ok)",
+  loose: "var(--warn)",
+  gap: "var(--danger)",
+} as const;
+
+function StatusBadge({ status, score }: { status: BridgeStatus; score: number }) {
+  return (
+    <span
+      className={cn(
+        "numeric rounded px-1.5 py-0.5 text-[11px] font-semibold",
+        STATUS_TONE[status],
+      )}
+    >
+      {STATUS_TEXT[status]} {fmtPct(score * 100)}
+    </span>
+  );
+}
+
+/**
+ * Satu lapis piramida. Lebarnya menyempit ke atas seperti piramida aroma,
+ * dipotong datar di puncak supaya label Top tetap muat.
+ */
+const BAND_SHAPE: Record<Tier, string> = {
+  top: "polygon(36% 0, 64% 0, 76% 100%, 24% 100%)",
+  mid: "polygon(24% 0, 76% 0, 88% 100%, 12% 100%)",
+  base: "polygon(12% 0, 88% 0, 100% 100%, 0 100%)",
+  all: "polygon(6% 0, 94% 0, 100% 100%, 0 100%)",
+};
+
+function PyramidBand({
+  tier,
+  children,
+  dim,
+}: {
+  tier: Tier;
+  children: React.ReactNode;
+  dim?: boolean;
+}) {
+  return (
+    <div
+      className={cn(
+        "flex h-12 items-center justify-center gap-1.5 text-center",
+        dim && "opacity-45",
+      )}
+      style={{
+        clipPath: BAND_SHAPE[tier],
+        backgroundColor: TIER_META[tier].soft,
+        color: TIER_META[tier].color,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function PadukanButton({
+  open,
+  onClick,
+  count,
+}: {
+  open: boolean;
+  onClick: () => void;
+  count: number;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-expanded={open}
+      disabled={count === 0}
+      title={count === 0 ? "Belum ada bahan yang cocok" : undefined}
+      className={cn(
+        "flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[11px] font-medium disabled:opacity-40",
+        open
+          ? "bg-[var(--cta)] text-white"
+          : "text-[var(--text-muted)] hover:bg-[var(--surface-muted)] hover:text-[var(--text)]",
+      )}
+    >
+      Padukan
+      <ChevronDown className={cn("size-3 transition-transform", open && "rotate-180")} />
+    </button>
+  );
+}
+
+/**
+ * Kepaduan — dulu "Bridger".
+ *
+ * Dua pertanyaan, dua sub-tab: seberapa nyambung satu lapisan ke lapisan
+ * berikutnya (antar tier), dan seberapa menyatu isi satu lapisan sebagai satu
+ * accord (dalam tier). Keduanya digambar sebagai piramida, karena yang dinilai
+ * memang susunan bertingkat — angka dalam daftar tidak menunjukkan DI MANA
+ * sambungannya putus.
+ *
+ * "Padukan" membuka saran untuk satu sambungan atau satu lapis saja, dengan
+ * perkiraan skor setelah bahannya ditambahkan pada dosis awal.
+ */
+function KepaduanTab({
   analysis,
+  pyramid,
   onAdd,
 }: {
   analysis: Analysis;
+  pyramid: boolean;
   onAdd?: (materialId: string, tier: Tier, dose: number) => void;
 }) {
   const { crossTier, withinTier } = analysis.bridges;
-  const [view, setView] = useState<"antar" | "kepaduan">("antar");
+  const [view, setView] = useState<"antar" | "dalam">(pyramid ? "antar" : "dalam");
+  const [open, setOpen] = useState<string | null>(null);
+  const toggle = (key: string) => setOpen(open === key ? null : key);
 
-  if (!crossTier.length && !withinTier.length) {
-    return (
-      <p className="text-[13px] text-[var(--text-muted)]">
-        Belum ada yang bisa dinilai. Isi minimal dua tier dengan bahan yang
-        punya data facet.
-      </p>
-    );
-  }
-
-  const statusTone = {
-    connected: "bg-[var(--ok-soft)] text-[var(--ok)]",
-    loose: "bg-[var(--warn-soft)] text-[var(--warn)]",
-    gap: "bg-[var(--danger-soft)] text-[var(--danger)]",
-  } as const;
-  const statusLabel = {
-    connected: "Nyambung",
-    loose: "Renggang",
-    gap: "Jurang",
-  } as const;
-
-  const badge = (status: BridgeStatus, sim: number) => (
-    <span
-      className={cn(
-        "rounded px-1.5 py-0.5 text-[11px] font-semibold",
-        statusTone[status],
-      )}
-    >
-      {statusLabel[status]} {fmtPct(sim * 100)}
-    </span>
-  );
-
-  // Status terburuk tiap bagian, supaya masalah di sub-tab yang sedang tidak
-  // dibuka tetap kelihatan dari labelnya.
   const RANK = { connected: 0, loose: 1, gap: 2 } as const;
   const worst = (list: BridgeStatus[]): BridgeStatus | null =>
-    list.length
-      ? list.reduce((a, b) => (RANK[b] > RANK[a] ? b : a))
-      : null;
-  const crossWorst = worst(
-    crossTier.filter((p) => p.comparable).map((p) => p.status),
-  );
-  const withinWorst = worst(withinTier.map((t) => t.status));
-  const dotColor = {
-    connected: "var(--ok)",
-    loose: "var(--warn)",
-    gap: "var(--danger)",
-  } as const;
+    list.length ? list.reduce((a, b) => (RANK[b] > RANK[a] ? b : a)) : null;
   const dot = (s: BridgeStatus | null) =>
     s && (
       <span
         aria-hidden
         className="ml-1.5 inline-block size-1.5 rounded-full"
-        style={{ backgroundColor: dotColor[s] }}
+        style={{ backgroundColor: STATUS_DOT[s] }}
       />
     );
 
+  const pairOf = (a: Tier, b: Tier) =>
+    crossTier.find((p) => p.pair[0] === a && p.pair[1] === b);
+  const cohesionFor = (t: Tier) => withinTier.find((x) => x.tier === t);
+  const filled = (t: Tier) =>
+    analysis.realPyramid.find((r) => r.tier === t)?.filled ?? 0;
+
+  const connector = (a: Tier, b: Tier) => {
+    const p = pairOf(a, b);
+    const key = `${a}-${b}`;
+    return (
+      <div className="py-1">
+        <div className="flex flex-wrap items-center justify-center gap-2">
+          <span className="text-[11px] text-[var(--text-subtle)]">
+            {TIER_META[a].label} ↕ {TIER_META[b].label}
+          </span>
+          {p?.comparable ? (
+            <StatusBadge status={p.status} score={p.sim} />
+          ) : (
+            <span className="rounded bg-[var(--surface-muted)] px-1.5 py-0.5 text-[11px] text-[var(--text-muted)]">
+              belum bisa dinilai
+            </span>
+          )}
+          {p?.comparable && onAdd && (
+            <PadukanButton
+              open={open === key}
+              onClick={() => toggle(key)}
+              count={p.suggestions.length}
+            />
+          )}
+        </div>
+        {open === key && p && (
+          <SuggestionList
+            suggestions={p.suggestions}
+            before={p.sim}
+            measure="kemiripan"
+            onAdd={onAdd}
+          />
+        )}
+      </div>
+    );
+  };
+
+  const tierBlock = (t: Tier) => {
+    const c = cohesionFor(t);
+    const key = `in-${t}`;
+    return (
+      <div key={t} className="pb-1">
+        <PyramidBand tier={t} dim={!c}>
+          <span className="text-[12px] font-semibold uppercase tracking-[0.04em]">
+            {t === "all" ? "Semua bahan" : TIER_META[t].label}
+          </span>
+          {c && (
+            <span className="numeric text-[12px] font-semibold">
+              {fmtPct(c.cohesion * 100)}
+            </span>
+          )}
+        </PyramidBand>
+        <div className="flex flex-wrap items-center justify-center gap-2 py-1">
+          {c ? (
+            <>
+              <StatusBadge status={c.status} score={c.cohesion} />
+              {onAdd && (
+                <PadukanButton
+                  open={open === key}
+                  onClick={() => toggle(key)}
+                  count={c.suggestions.length}
+                />
+              )}
+            </>
+          ) : (
+            <span className="text-[11px] text-[var(--text-subtle)]">
+              butuh minimal 2 bahan berfacet
+            </span>
+          )}
+        </div>
+        {c?.outlier && (
+          <p className="text-center text-[11px] text-[var(--text-muted)]">
+            paling menyendiri: {c.outlier.name} ({fmtPct(c.outlier.sim * 100)})
+          </p>
+        )}
+        {open === key && c && (
+          <SuggestionList
+            suggestions={c.suggestions}
+            before={c.cohesion}
+            measure="kepaduan"
+            onAdd={onAdd}
+          />
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-3">
-      {/*
-        Dua pertanyaan yang berbeda — sambungan antar lapisan, dan kepaduan
-        isi tiap lapisan — dipisah ke sub-tab. Ditumpuk, bagian kedua selalu
-        jatuh jauh di bawah dan harus discroll setiap kali dicek.
-      */}
-      <Tabs
-        value={view}
-        onValueChange={(v) => setView(v as "antar" | "kepaduan")}
-      >
+      <Tabs value={view} onValueChange={(v) => setView(v as "antar" | "dalam")}>
         <TabsList className="w-full">
-          <TabsTrigger value="antar">
+          <TabsTrigger value="antar" disabled={!pyramid}>
             Antar tier
-            {dot(crossWorst)}
+            {dot(worst(crossTier.filter((p) => p.comparable).map((p) => p.status)))}
           </TabsTrigger>
-          <TabsTrigger value="kepaduan">
-            Kepaduan tier
-            {dot(withinWorst)}
+          <TabsTrigger value="dalam">
+            Dalam tier
+            {dot(worst(withinTier.map((t) => t.status)))}
           </TabsTrigger>
         </TabsList>
       </Tabs>
 
-      {view === "antar" && !crossTier.length && (
-        <p className="text-[13px] text-[var(--text-muted)]">
-          Sambungan antar tier baru bisa dinilai setelah mode piramida aktif dan
-          minimal dua tier terisi.
-        </p>
-      )}
-      {view === "kepaduan" && !withinTier.length && (
-        <p className="text-[13px] text-[var(--text-muted)]">
-          Kepaduan baru bisa dinilai setelah ada tier yang berisi minimal dua
-          bahan dengan data facet.
-        </p>
-      )}
-
-      {/* ---------------------------- antar tier ---------------------------- */}
-      {view === "antar" && crossTier.length > 0 && (
-        <section className="space-y-2.5">
-
-          {crossTier.map((pair) => (
-            <div
-              key={pair.pair.join("-")}
-              className="rounded-lg border border-[var(--border)] p-3"
-            >
-              <div className="flex items-center gap-2">
-                <span className="text-[13px] font-medium">
-                  {TIER_META[pair.pair[0]].label} ↔{" "}
-                  {TIER_META[pair.pair[1]].label}
-                </span>
-                {/* Tier kosong bukan jurang. Melabelinya "Jurang 0%" memberi
-                    tahu ada masalah pada transisi yang belum ada. */}
-                {pair.comparable ? (
-                  badge(pair.status, pair.sim)
-                ) : (
-                  <span className="rounded bg-[var(--surface-muted)] px-1.5 py-0.5 text-[11px] font-medium text-[var(--text-muted)]">
-                    Belum bisa dinilai
-                  </span>
-                )}
-              </div>
-
-              {pair.comparable ? (
-                <SuggestionList suggestions={pair.suggestions} onAdd={onAdd} />
-              ) : (
-                <p className="mt-1 text-[11px] leading-relaxed text-[var(--text-subtle)]">
-                  Salah satu sisinya belum ada bahannya. Transisi baru bisa
-                  dinilai setelah kedua tier terisi — sementara itu, pakai
-                  sub-tab Kepaduan tier untuk memeriksa yang sudah ada.
-                </p>
-              )}
-            </div>
-          ))}
-        </section>
-      )}
-
-      {/* ---------------------------- dalam tier ---------------------------- */}
-      {view === "kepaduan" && withinTier.length > 0 && (
-        <section className="space-y-2.5">
+      {view === "antar" ? (
+        <>
+          <p className="text-[11px] leading-relaxed text-[var(--text-subtle)]">
+            Seberapa nyambung satu lapisan ke lapisan berikutnya — transisi
+            yang tercium saat Top memudar ke Mid, lalu Mid ke Base.
+          </p>
           <div>
-            {/*
-              Dulu bagian ini membandingkan tiap PASANGAN bahan. Itu tidak
-              pernah selesai — tiap bridger yang ditambahkan jadi bahan baru
-              yang membentuk pasangan renggang dengan semua yang sudah ada — dan
-              salah menilai: dua bahan yang berbeda bukan cacat.
-            */}
-            <p className="text-[11px] leading-relaxed text-[var(--text-subtle)]">
-              Seberapa menyatu isi tiap tier sebagai satu accord. Bahan yang
-              berbeda satu sama lain bukan masalah — kontras itu yang membuat
-              accord menarik. Yang ditandai cuma bahan yang berdiri sendirian di
-              luar arah tiernya.
-            </p>
+            <PyramidBand tier="top" dim={filled("top") === 0}>
+              <span className="text-[12px] font-semibold uppercase tracking-[0.04em]">Top</span>
+              <span className="numeric text-[11px]">{fmtPct(filled("top"))}</span>
+            </PyramidBand>
+            {connector("top", "mid")}
+            <PyramidBand tier="mid" dim={filled("mid") === 0}>
+              <span className="text-[12px] font-semibold uppercase tracking-[0.04em]">Mid</span>
+              <span className="numeric text-[11px]">{fmtPct(filled("mid"))}</span>
+            </PyramidBand>
+            {connector("mid", "base")}
+            <PyramidBand tier="base" dim={filled("base") === 0}>
+              <span className="text-[12px] font-semibold uppercase tracking-[0.04em]">Base</span>
+              <span className="numeric text-[11px]">{fmtPct(filled("base"))}</span>
+            </PyramidBand>
           </div>
-
-          {withinTier.map((t) => (
-            <div
-              key={t.tier}
-              className="rounded-lg border border-[var(--border)] p-3"
-            >
-              <div className="flex flex-wrap items-center gap-2">
-                <span
-                  className="rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.04em]"
-                  style={{
-                    color: TIER_META[t.tier].color,
-                    backgroundColor: TIER_META[t.tier].soft,
-                  }}
-                >
-                  {TIER_META[t.tier].label}
-                </span>
-                <span className="text-[13px] font-medium">Kepaduan</span>
-                {badge(t.status, t.cohesion)}
-              </div>
-
-              {t.outlier ? (
-                <>
-                  <p className="mt-1.5 text-[12px] leading-relaxed">
-                    <strong className="font-medium">{t.outlier.name}</strong>{" "}
-                    berdiri sendirian ({fmtPct(t.outlier.sim * 100)} dekat ke
-                    sisanya). Kalau itu memang disengaja, biarkan — kalau tidak,
-                    satu bahan di bawah bisa menyambungkannya.
-                  </p>
-                  <SuggestionList suggestions={t.suggestions} onAdd={onAdd} />
-                </>
-              ) : (
-                <p className="mt-1.5 text-[12px] text-[var(--text-subtle)]">
-                  Tidak ada bahan yang menyendiri. Tier ini terbaca sebagai satu
-                  accord.
-                </p>
-              )}
-            </div>
-          ))}
-        </section>
+          {/* Top ↔ Base jarang bertemu di hidung — Mid ada di antaranya —
+              jadi dia dicatat terpisah, bukan digambar sebagai sambungan. */}
+          <div className="border-t border-[var(--border)] pt-2">
+            {connector("top", "base")}
+          </div>
+        </>
+      ) : (
+        <>
+          <p className="text-[11px] leading-relaxed text-[var(--text-subtle)]">
+            Seberapa menyatu isi tiap lapis sebagai satu accord. Bahan yang
+            berbeda satu sama lain bukan masalah — kontras itu yang membuat
+            accord menarik. Yang disebut cuma bahan yang berdiri sendirian di
+            luar arah lapisnya.
+          </p>
+          <div>
+            {(pyramid ? (["top", "mid", "base"] as Tier[]) : (["all"] as Tier[])).map(
+              (t) => tierBlock(t),
+            )}
+          </div>
+        </>
       )}
-
-      <p className="text-[11px] leading-relaxed text-[var(--text-subtle)]">
-        Satu celah, satu bridger. Mulai dosis kecil, naikkan sampai sambungannya
-        halus — bukan sampai bridger-nya kecium sendiri. Dan tidak semua celah
-        perlu ditambal: yang tidak mengganggu hidungmu, biarkan.
-      </p>
     </div>
   );
 }
 
 function SuggestionList({
   suggestions,
+  before,
+  measure,
   onAdd,
 }: {
   suggestions: BridgeSuggestion[];
+  before: number;
+  measure: "kemiripan" | "kepaduan";
   onAdd?: (materialId: string, tier: Tier, dose: number) => void;
 }) {
-  if (!suggestions.length) return null;
+  if (!suggestions.length) {
+    return (
+      <p className="mt-1 text-center text-[12px] text-[var(--text-muted)]">
+        Belum ada bahan yang cocok untuk memadukan bagian ini.
+      </p>
+    );
+  }
 
   return (
-    <ul className="mt-2 space-y-1.5">
-      {suggestions.map((s) => (
-        <li
-          key={s.materialId}
-          className="flex items-start gap-2 rounded border border-[var(--border)] px-2 py-1.5"
-        >
-          <div className="min-w-0 flex-1">
-            <p className="text-[13px] font-medium">
-              {s.name}
-              {s.inStock && <span className="ml-1 text-[var(--warn)]">★</span>}
-              {s.ruleSource && (
-                <span className="ml-1.5 rounded bg-[var(--surface-muted)] px-1 py-0.5 text-[10px] text-[var(--text-muted)]">
-                  {s.ruleSource}
-                </span>
+    <ul className="mt-1.5 space-y-1.5">
+      {suggestions.map((s) => {
+        const gain = s.after != null ? s.after - before : null;
+        // Saran yang tidak menaikkan skor di dosis awal tetap tampil (urutan
+        // dari skor jembatan), tapi dibedakan — bukan dibuang diam-diam.
+        const lifts = gain != null && gain >= 0.005;
+        return (
+          <li
+            key={s.materialId}
+            className={cn(
+              "flex items-start gap-2 rounded border border-[var(--border)] px-2 py-1.5",
+              !lifts && "opacity-70",
+            )}
+          >
+            <div className="min-w-0 flex-1">
+              <p className="text-[12px] font-medium">
+                {s.name}
+                {s.inStock && <span className="ml-1 text-[var(--warn)]">★</span>}
+                {s.ruleSource && (
+                  <span className="ml-1.5 rounded bg-[var(--surface-muted)] px-1 py-0.5 text-[10px] text-[var(--text-muted)]">
+                    {s.ruleSource}
+                  </span>
+                )}
+              </p>
+              {s.after != null && (
+                <p className="numeric text-[11px] text-[var(--text-muted)]">
+                  {lifts
+                    ? `di ${fmtPct(s.starterDose)}: ${measure} ${fmtPct(before * 100)} → ${fmtPct(s.after * 100)}`
+                    : `tidak menaikkan ${measure} di ${fmtPct(s.starterDose)} — mungkin butuh dosis lebih`}
+                </p>
               )}
-            </p>
-            <p className="text-[11px] text-[var(--text-subtle)]">{s.reason}</p>
-          </div>
-          {onAdd && (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => onAdd(s.materialId, s.tier, s.starterDose)}
-            >
-              + {TIER_META[s.tier].label}
-            </Button>
-          )}
-        </li>
-      ))}
+              <p className="text-[11px] text-[var(--text-subtle)]">{s.reason}</p>
+            </div>
+            {onAdd && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 px-2 text-[11px]"
+                onClick={() => onAdd(s.materialId, s.tier, s.starterDose)}
+              >
+                + {TIER_META[s.tier].label}
+              </Button>
+            )}
+          </li>
+        );
+      })}
     </ul>
   );
 }
@@ -1235,9 +1344,7 @@ export function AnalysisPanel({
           <TabsTrigger value="fungsi">Fungsi</TabsTrigger>
           <TabsTrigger value="pelarut">Pelarut</TabsTrigger>
           <TabsTrigger value="hpp">HPP</TabsTrigger>
-          <TabsTrigger value="bridger">Bridger</TabsTrigger>
-          <TabsTrigger value="diffuser">Diffuser</TabsTrigger>
-          <TabsTrigger value="fixative">Fixative</TabsTrigger>
+          <TabsTrigger value="bridger">Kepaduan</TabsTrigger>
         </TabsList>
       </Tabs>
 
@@ -1270,10 +1377,7 @@ export function AnalysisPanel({
         fixative, dan pilihannya ikut terbawa saat berpindah tab.
       */}
       {onOnlyStockChange &&
-        (tab === "aroma" ||
-          tab === "bridger" ||
-          tab === "diffuser" ||
-          tab === "fixative") && (
+        (tab === "aroma" || tab === "bridger") && (
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
@@ -1298,20 +1402,9 @@ export function AnalysisPanel({
           </div>
         )}
       {tab === "bridger" && (
-        <BridgeTab analysis={analysis} onAdd={onAddBridge} />
-      )}
-      {tab === "diffuser" && (
-        <RoleTab
-          reports={analysis.diffusers}
+        <KepaduanTab
+          analysis={analysis}
           pyramid={context.version.pyramid != null}
-          onAdd={onAddBridge}
-        />
-      )}
-      {tab === "fixative" && (
-        // Fixative selalu ke Base, jadi memilih tier sasaran tidak bermakna.
-        <RoleTab
-          reports={{ all: analysis.fixatives }}
-          pyramid={false}
           onAdd={onAddBridge}
         />
       )}
@@ -1432,180 +1525,3 @@ function FunctionTab({ analysis }: { analysis: Analysis }) {
   );
 }
 
-/**
- * Saran bahan untuk satu peran: Diffuser atau Fixative.
- *
- * Panelnya dipisah dari Bridger walau tampilannya mirip, karena pertanyaannya
- * berbeda. Bridger mencari bahan yang duduk di ANTARA dua sisi yang tidak
- * nyambung. Dua panel ini mencari yang searah dengan formula secara keseluruhan
- * — yang satu membawanya keluar lebih jauh, yang satu menahannya lebih lama.
- *
- * Satu komponen untuk keduanya: isinya identik kecuali kalimatnya, dan dua
- * salinan yang mirip pasti menyimpang pelan-pelan.
- */
-const ROLE_COPY = {
-  diffuser: {
-    title: "Porsi diffuser",
-    empty:
-      "Belum ada bahan berperan diffuser. Formulanya bisa terdengar dekat di kulit walau bahannya kuat.",
-    footer:
-      "Diffuser menaikkan jangkauan, bukan ketahanan — yang menahan drydown ada di Fixative.",
-  },
-  fixative: {
-    title: "Porsi fixative",
-    empty:
-      "Belum ada bahan berperan fixative. Tidak ada yang menahan bahan ringan, jadi drydown-nya akan sependek bahan paling cepat menguap.",
-    footer:
-      "Fixative memperpanjang drydown, bukan jangkauan — yang membawa keluar ada di Diffuser. Sarannya diarahkan ke Base, karena yang menahan harus berada di lapisan paling lambat menguap.",
-  },
-} as const;
-
-function RoleTab({
-  reports,
-  pyramid,
-  onAdd,
-}: {
-  /** `all` wajib; tier diisi analyze() hanya saat mode piramida aktif */
-  reports: Partial<Record<Tier, RoleReport>> & { all: RoleReport };
-  /** tampilkan pemilih sasaran per tier */
-  pyramid: boolean;
-  onAdd?: (materialId: string, tier: Tier, dose: number) => void;
-}) {
-  const [scope, setScope] = useState<Tier>("all");
-  const report = reports[scope] ?? reports.all;
-  const { role, sharePct, present, suggestions } = report;
-  const copy = ROLE_COPY[role];
-
-  return (
-    <div className="space-y-3">
-      {/*
-        Diffuser tidak netral: Ambroxan mengangkat kayu, Hedione mengangkat
-        floral. Jadi pertanyaannya "mau ngangkat apa", bukan "biar nyebar" —
-        dan pilihan ini yang menjawabnya.
-      */}
-      {pyramid && (
-        <div className="space-y-1">
-          <p className="text-[11px] text-[var(--text-subtle)]">Mau ngangkat</p>
-          <Tabs value={scope} onValueChange={(v) => setScope(v as Tier)}>
-            <TabsList className="w-full">
-              <TabsTrigger value="all">Semua</TabsTrigger>
-              {PYRAMID_TIERS.map((t) => (
-                <TabsTrigger key={t} value={t}>
-                  {TIER_META[t].label}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-          </Tabs>
-        </div>
-      )}
-
-      <div className="rounded-lg border border-[var(--border)] p-3">
-        <div className="flex items-baseline gap-2">
-          <span className="text-[13px] font-medium">{copy.title}</span>
-          <span className="numeric ml-auto text-[15px] font-semibold">
-            {fmtPct(sharePct)}
-          </span>
-        </div>
-        <p className="mt-1 text-[12px] leading-relaxed text-[var(--text-subtle)]">
-          {present.length ? `Dari ${present.join(" · ")}.` : copy.empty}
-        </p>
-      </div>
-
-      {suggestions.length > 0 ? (
-        <ul className="space-y-1.5">
-          {suggestions.map((s) => (
-            <li
-              key={s.materialId}
-              className="flex items-start gap-2 rounded border border-[var(--border)] px-2 py-1.5"
-            >
-              <div className="min-w-0 flex-1 space-y-0.5">
-                <p className="text-[13px] font-medium">
-                  {s.name}
-                  {s.inStock && <span className="ml-1 text-[var(--warn)]">★</span>}
-                </p>
-
-                {/*
-                  Angka sebelum → sesudah cuma sumbangan bau bahan ini sendiri.
-                  Sinergi tidak punya data terukur, jadi tidak dikarang — dan
-                  itu disebut di catatan bawah, bukan disembunyikan.
-                */}
-                {s.preview ? (
-                  <p className="text-[11px] leading-relaxed text-[var(--text-muted)]">
-                    di {fmtPct(s.starterDose)}:{" "}
-                    <span
-                      className="font-medium"
-                      style={{
-                        color: `color-mix(in oklab, ${facetColor(s.preview.facet)} 78%, var(--text))`,
-                      }}
-                    >
-                      {facetLabel(s.preview.facet)}
-                    </span>{" "}
-                    <span className="numeric">
-                      {fmtPct(s.preview.beforePct)} → {fmtPct(s.preview.afterPct)}
-                    </span>
-                  </p>
-                ) : (
-                  <p className="text-[11px] text-[var(--text-subtle)]">
-                    {s.reason}
-                  </p>
-                )}
-
-                <p className="text-[11px] leading-relaxed text-[var(--text-subtle)]">
-                  {s.lifts.length > 0
-                    ? `searah dengan ${s.lifts.map((l) => l.name).join(" · ")}`
-                    : "tidak searah kuat dengan satu bahan pun — mengangkat arah keseluruhannya"}
-                </p>
-
-                {scope !== "all" && s.tier !== scope && (
-                  <p className="text-[11px] leading-relaxed text-[var(--text-subtle)]">
-                    Tetap masuk {TIER_META[s.tier].label} — itu kecepatan
-                    menguapnya, dan memindahkannya tidak membuatnya menguap
-                    bareng {TIER_META[scope].label}.
-                  </p>
-                )}
-              </div>
-              {onAdd && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => onAdd(s.materialId, s.tier, s.starterDose)}
-                >
-                  + {TIER_META[s.tier].label}
-                </Button>
-              )}
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="text-[13px] text-[var(--text-muted)]">
-          Belum ada saran. Isi dulu formulanya dengan bahan yang punya data
-          facet — sarannya dicari dari arah aroma yang sudah terbentuk.
-        </p>
-      )}
-
-      {/* Beberapa bahan yang paling dikenal untuk peran ini justru ditaruh
-          supplier di kategori lain, jadi mereka tidak akan muncul sampai
-          kategorinya dikoreksi. Tanpa catatan ini panelnya terlihat seperti
-          melewatkan bahan yang jelas-jelas ada di master. */}
-      <p className="text-[11px] leading-relaxed text-[var(--text-subtle)]">
-        Yang disarankan cuma bahan yang kategorinya benar-benar data supplier,
-        bukan tebakan. {copy.footer}{" "}
-        <strong className="font-medium">
-          Kategorinya ikut pricelist supplier
-        </strong>{" "}
-        — koreksi di halaman detail bahan kalau menurutmu sebuah bahan berperan
-        lain.
-      </p>
-
-      {suggestions.some((s) => s.preview) && (
-        <p className="text-[11px] leading-relaxed text-[var(--text-subtle)]">
-          Angka sebelum → sesudah adalah porsi facet itu di seluruh formula,
-          dari bau bahannya sendiri. Sinergi — dua bahan barengan terasa lebih
-          hidup dari jumlahnya — nyata tapi tidak punya data terukur, jadi
-          hidungmu yang menilai sisanya.
-        </p>
-      )}
-    </div>
-  );
-}
