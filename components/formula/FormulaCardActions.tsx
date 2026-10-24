@@ -7,6 +7,7 @@ import {
   ArchiveRestore,
   Copy,
   FileDown,
+  FileText,
   MoreHorizontal,
   Pencil,
   Trash2,
@@ -69,6 +70,11 @@ export function FormulaCardActions({
   const exportHref = `/formulas/${id}/export?${new URLSearchParams({
     ...(versionId ? { v: versionId } : {}),
     ...(withCost ? { hpp: "1" } : {}),
+  })}`;
+  // Laporan PDF: halaman cetak dengan semua tab analisa terbuka.
+  const printHref = `/formulas/${id}/print?${new URLSearchParams({
+    ...(versionId ? { v: versionId } : {}),
+    hpp: withCost ? "1" : "0",
   })}`;
   const [newName, setNewName] = useState(name);
   const [pending, start] = useTransition();
@@ -143,7 +149,7 @@ export function FormulaCardActions({
 
           <DropdownMenuItem onSelect={() => setExporting(true)}>
             <FileDown className="size-4" />
-            Export Excel
+            Export (Excel / PDF)
           </DropdownMenuItem>
 
           <DropdownMenuItem
@@ -196,9 +202,10 @@ export function FormulaCardActions({
           <DialogHeader>
             <DialogTitle>Export {name}</DialogTitle>
             <DialogDescription>
-              Komposisi lengkap — persen, gram, dilusi, bahan murni, impact,
-              kekuatan, peran, dan facet — ditambah ringkasan piramida, SPL,
-              aroma, dan peringatan. Lembar Formula-nya bisa diimpor balik.
+              <strong className="font-medium">Excel</strong> — komposisi lengkap
+              per baris, bisa diimpor balik. <strong className="font-medium">PDF</strong>{" "}
+              — laporan dengan semua tab analisa terbuka: ringkasan & SPL, aroma
+              beserta isi tiap irisan, kepaduan, kekuatan per fase, dan HPP.
             </DialogDescription>
           </DialogHeader>
 
@@ -223,10 +230,16 @@ export function FormulaCardActions({
             <Button type="button" variant="outline" onClick={() => setExporting(false)}>
               Batal
             </Button>
-            <Button asChild>
+            <Button asChild variant="outline">
               <a href={exportHref} download onClick={() => setExporting(false)}>
                 <FileDown className="size-4" />
-                Unduh .xlsx
+                Excel
+              </a>
+            </Button>
+            <Button asChild>
+              <a href={printHref} target="_blank" rel="noopener" onClick={() => setExporting(false)}>
+                <FileText className="size-4" />
+                Laporan PDF
               </a>
             </Button>
           </DialogFooter>

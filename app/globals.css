@@ -236,11 +236,29 @@
     padding: 0 !important;
   }
 
-  /* Hitam putih: warna tier dan badge tetap terbaca sebagai teks. */
-  * {
+  /* Hitam putih: warna tier dan badge tetap terbaca sebagai teks.
+     Kecuali laporan PDF formula (.print-color): di sana warna adalah isinya —
+     donat aroma tanpa warna irisan tidak bisa dibaca. */
+  body:not(:has(.print-color)) * {
     background: transparent !important;
     color: #000 !important;
     box-shadow: none !important;
+  }
+
+  .print-color,
+  .print-color * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    box-shadow: none !important;
+  }
+
+  /* Bagian laporan tidak dipotong di tengah kalau masih muat satu halaman. */
+  .print-color section {
+    break-inside: avoid;
+  }
+
+  .print-break {
+    break-before: page;
   }
 
   /* Garis tabel tetap perlu — tanpa itu barisnya menyatu di kertas. */
