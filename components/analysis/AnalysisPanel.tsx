@@ -9,7 +9,7 @@ import {
   OctagonAlert,
   type LucideIcon,
 } from "lucide-react";
-import { Cell, Pie, PieChart, ResponsiveContainer } from "recharts";
+import { donutLayout, DEFAULT_GEOMETRY as DONUT } from "@/lib/chart/donutLayout";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { Analysis } from "@/lib/calc/analyze";
@@ -436,6 +436,84 @@ function StatTile({ value, label }: { value: React.ReactNode; label: string }) {
   );
 }
 
+/**
+ * Donat dengan label di luar dan garis penunjuk — setiap irisan disebut
+ * namanya, bukan cuma yang terbesar di tengah. Tata letaknya di
+ * lib/chart/donutLayout (label tiap sisi didorong supaya tidak menumpuk).
+ */
+function LabeledDonut({
+  slices,
+  center,
+}: {
+  slices: { key: string; label: string; value: number; color: string }[];
+  center: { label: string; value: string } | null;
+}) {
+  const layout = donutLayout(slices.map((s) => ({ key: s.key, value: s.value })));
+  const byKey = new Map(slices.map((s) => [s.key, s]));
+  return (
+    <svg
+      viewBox={`0 0 ${DONUT.width} ${DONUT.height}`}
+      className="mx-auto block w-full max-w-[480px]"
+      role="img"
+      aria-label={slices.map((s) => `${s.label} ${fmtPct(s.value)}`).join(", ")}
+    >
+      {layout.map((l) => (
+        <path key={l.key} d={l.path} fill={byKey.get(l.key)!.color} />
+      ))}
+      {layout.map((l) => {
+        const s = byKey.get(l.key)!;
+        return (
+          <g key={`lbl-${l.key}`}>
+            <polyline
+              points={l.leader.map((p) => p.join(",")).join(" ")}
+              fill="none"
+              stroke={s.color}
+              strokeWidth={1}
+              opacity={0.7}
+            />
+            <text
+              x={l.labelX}
+              y={l.labelY}
+              textAnchor={l.anchor}
+              dominantBaseline="middle"
+              fontSize={11}
+            >
+              <tspan
+                fontWeight={600}
+                fill={`color-mix(in oklab, ${s.color} 78%, var(--text))`}
+              >
+                {s.label}
+              </tspan>
+              {/* Jarak lewat dx, bukan spasi: SVG membuang spasi di awal
+                  tspan, dan "Woody20,6%" yang menempel sulit dibaca. */}
+              <tspan dx={4} fill="var(--text-muted)">
+                {fmtPct(s.value)}
+              </tspan>
+            </text>
+          </g>
+        );
+      })}
+      {center && (
+        <text
+          x={DONUT.cx}
+          y={DONUT.cy}
+          textAnchor="middle"
+          dominantBaseline="middle"
+          fontSize={11}
+        >
+          <tspan x={DONUT.cx} dy="-0.5em" fontWeight={600} fill="var(--text)">
+            {/* Lubang donat sempit; nama lengkap sudah ada di label luar. */}
+            {center.label.split("/")[0]}
+          </tspan>
+          <tspan x={DONUT.cx} dy="1.2em" fill="var(--text-muted)">
+            {center.value}
+          </tspan>
+        </text>
+      )}
+    </svg>
+  );
+}
+
 function AromaTab({
   analysis,
   context,
@@ -502,44 +580,15 @@ function AromaTab({
         </TabsList>
       </Tabs>
 
-      <div className="relative mx-auto size-[170px]">
-        <ResponsiveContainer width="100%" height="100%">
-          <PieChart>
-            <Pie
-              data={slices}
-              dataKey="value"
-              innerRadius="60%"
-              outerRadius="100%"
-              paddingAngle={2}
-              stroke="none"
-              isAnimationActive={false}
-            >
-              {slices.map((s) => (
-                <Cell
-                  key={s.key}
-                  fill={
-                    s.key === "__other"
-                      ? "var(--facet-other)"
-                      : facetColor(s.key)
-                  }
-                />
-              ))}
-            </Pie>
-          </PieChart>
-        </ResponsiveContainer>
-        {dominant && (
-          <div className="pointer-events-none absolute inset-0 grid place-items-center text-center">
-            <div>
-              <p className="text-[13px] font-semibold">
-                {facetLabel(dominant.facet)}
-              </p>
-              <p className="numeric text-[12px] text-[var(--text-muted)]">
-                {fmtPct(dominant.pct)}
-              </p>
-            </div>
-          </div>
-        )}
-      </div>
+      <LabeledDonut
+        slices={slices.map((sl) => ({
+          key: sl.key,
+          label: sl.name,
+          value: sl.value,
+          color: sl.key === "__other" ? "var(--facet-other)" : facetColor(sl.key),
+        }))}
+        center={dominant ? { label: facetLabel(dominant.facet), value: fmtPct(dominant.pct) } : null}
+      />
 
 {/*
         Tiap irisan menjawab tiga hal berurutan: seberapa besar, ke arah mana,
