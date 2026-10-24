@@ -12,6 +12,7 @@ import {
   scaleTier,
   setLocked as allocSetLocked,
   spreadEven,
+  tierTarget,
 } from "@/lib/calc/allocate";
 import { round5, type Line, type Pyramid, type Tier } from "@/lib/calc/types";
 
@@ -91,14 +92,8 @@ const snapshot = (s: EditorState): EditorSnapshot => ({
   priceTierOverride: s.priceTierOverride,
 });
 
-/** Target tier: dari piramida, atau 100 kalau mode piramida mati. */
-export function targetOf(pyramid: Pyramid | null, tier: Tier): number {
-  if (!pyramid) return 100;
-  if (tier === "top") return pyramid.top;
-  if (tier === "mid") return pyramid.mid;
-  if (tier === "base") return pyramid.base;
-  return 100;
-}
+/** Target tier — rumusnya di lib/calc/allocate, dipakai juga pratinjau. */
+export const targetOf = tierTarget;
 
 const linesOf = (lines: Line[], tier: Tier) =>
   lines.filter((l) => l.tier === tier);

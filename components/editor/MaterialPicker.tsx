@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { fmtIdr, fmtNum } from "@/lib/calc/format";
+import { dominantFacet } from "@/lib/calc/aroma";
 import { pickTier, pricePerUnit } from "@/lib/calc/price";
 import type { Material, Settings, Tier } from "@/lib/calc/types";
 import type { CreatedMaterial } from "@/app/actions/materials";
@@ -29,6 +30,56 @@ import type { AccordOption } from "@/lib/data/versions";
 import type { MaterialMeta } from "@/lib/data/loadEditorData";
 import { TIER_META, facetColor, facetLabel } from "@/lib/tiers";
 import { cn } from "@/lib/utils";
+
+const ALL = "__all";
+const NO_FACET = "__none";
+const NO_ROLE = "__none";
+const ROLE_ORDER = ["modifier", "diffuser", "fixative", "bridger", NO_ROLE];
+const ROLE_LABEL: Record<string, string> = {
+  modifier: "Modifier",
+  diffuser: "Diffuser",
+  fixative: "Fixative",
+  bridger: "Bridger",
+  [NO_ROLE]: "Belum ada peran",
+};
+
+/** Satu baris chip yang bisa digeser ke samping kalau tidak muat. */
+function ChipRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="w-12 shrink-0 text-[11px] text-[var(--text-subtle)]">{label}</span>
+      <div className="-mx-1 flex min-w-0 flex-1 gap-1 overflow-x-auto px-1 pb-0.5">
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function Chip({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={cn(
+        "flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium whitespace-nowrap",
+        active
+          ? "border-[var(--cta)] bg-[var(--cta)] text-white"
+          : "border-[var(--border-strong)] text-[var(--text-muted)] hover:text-[var(--text)]",
+      )}
+    >
+      {children}
+    </button>
+  );
+}
 
 export type PickResult =
   | { kind: "raw_material"; refId: string }
@@ -104,15 +155,65 @@ export function MaterialPicker({
 
   const tierKey = pickTier(batchG, settings, priceTierOverride);
 
-  const rows = useMemo(() => {
-    const list = onlyStock
-      ? materials.filter((m) => stock.has(m.id))
-      : materials;
-    return list.map((m) => {
-      const price = pricePerUnit(m, tierKey);
-      return { m, info: meta.get(m.id), pricePerG: price.pricePerUnit };
-    });
-  }, [materials, meta, onlyStock, stock, tierKey]);
+  // Pengelompokan: aroma dulu (facet paling menentukan), lalu peran. Bebas
+  // dipilih — beda dari Tingkatkan yang MENYARANKAN sesuai arah formula; di
+  // sini daftarnya cuma dirapikan supaya mudah disisir.
+  const [aroma, setAroma] = useState<string>(ALL);
+  const [role, setRole] = useState<string>(ALL);
+
+  const base = useMemo(
+    () =>
+      (onlyStock ? materials.filter((m) => stock.has(m.id)) : materials).map(
+        (m) => ({
+          m,
+          aroma: dominantFacet(m.facets) ?? NO_FACET,
+          role: (m.functionCategory ?? "").toLowerCase() || NO_ROLE,
+        }),
+      ),
+    [materials, onlyStock, stock],
+  );
+
+  // Hitungan tiap chip mengikuti pilihan di baris LAIN, supaya angka di chip
+  // peran menjawab "berapa diffuser yang woody", bukan "berapa diffuser".
+  const aromaCounts = useMemo(() => {
+    const c = new Map<string, number>();
+    for (const r of base) {
+      if (role !== ALL && r.role !== role) continue;
+      c.set(r.aroma, (c.get(r.aroma) ?? 0) + 1);
+    }
+    // Pilihan yang sedang aktif tetap tampil walau isinya nol — kalau
+    // chip-nya hilang, daftar kosong tanpa ada yang bisa diklik untuk keluar.
+    if (aroma !== ALL && !c.has(aroma)) c.set(aroma, 0);
+    return [...c.entries()].sort(
+      (a, b) =>
+        Number(a[0] === NO_FACET) - Number(b[0] === NO_FACET) || b[1] - a[1],
+    );
+  }, [base, role, aroma]);
+  const roleCounts = useMemo(() => {
+    const c = new Map<string, number>();
+    for (const r of base) {
+      if (aroma !== ALL && r.aroma !== aroma) continue;
+      c.set(r.role, (c.get(r.role) ?? 0) + 1);
+    }
+    if (role !== ALL && !c.has(role)) c.set(role, 0);
+    return ROLE_ORDER.filter((k) => c.has(k)).map((k) => [k, c.get(k)!] as const);
+  }, [base, aroma, role]);
+
+  const rows = useMemo(
+    () =>
+      base
+        .filter(
+          (r) =>
+            (aroma === ALL || r.aroma === aroma) &&
+            (role === ALL || r.role === role),
+        )
+        .map(({ m }) => ({
+          m,
+          info: meta.get(m.id),
+          pricePerG: pricePerUnit(m, tierKey).pricePerUnit,
+        })),
+    [base, aroma, role, meta, tierKey],
+  );
 
   const close = () => onOpenChange(false);
 
@@ -191,6 +292,40 @@ export function MaterialPicker({
             </button>
           )}
         </div>
+
+        {tab === "material" && (
+          <div className="space-y-1.5 px-5">
+            <ChipRow label="Aroma">
+              <Chip active={aroma === ALL} onClick={() => setAroma(ALL)}>
+                Semua
+              </Chip>
+              {aromaCounts.map(([key, n]) => (
+                <Chip key={key} active={aroma === key} onClick={() => setAroma(aroma === key ? ALL : key)}>
+                  {key !== NO_FACET && (
+                    <span
+                      aria-hidden
+                      className="size-2 rounded-full"
+                      style={{ backgroundColor: facetColor(key) }}
+                    />
+                  )}
+                  {key === NO_FACET ? "Tanpa facet" : facetLabel(key)}
+                  <span className="text-[10px] opacity-70">{n}</span>
+                </Chip>
+              ))}
+            </ChipRow>
+            <ChipRow label="Peran">
+              <Chip active={role === ALL} onClick={() => setRole(ALL)}>
+                Semua
+              </Chip>
+              {roleCounts.map(([key, n]) => (
+                <Chip key={key} active={role === key} onClick={() => setRole(role === key ? ALL : key)}>
+                  {ROLE_LABEL[key] ?? key}
+                  <span className="text-[10px] opacity-70">{n}</span>
+                </Chip>
+              ))}
+            </ChipRow>
+          </div>
+        )}
 
         <Command
           className="border-t border-[var(--border)]"

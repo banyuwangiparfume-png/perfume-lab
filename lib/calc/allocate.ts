@@ -1,4 +1,4 @@
-import { round5, sum, type Line } from "./types";
+import { round5, sum, type Line, type Pyramid, type Tier } from "./types";
 
 /**
  * Pembagian persen di dalam SATU tier.
@@ -53,6 +53,19 @@ export function addLine(
   target: number,
 ): Line[] {
   return allocateTier([...lines, { ...newLine, locked: false }], target);
+}
+
+/**
+ * Target tier: dari piramida, atau 100 kalau mode piramida mati. Dipakai
+ * store editor dan pratinjau "Turunkan" — satu rumus, supaya pratinjau
+ * membagi ulang persen persis seperti editor.
+ */
+export function tierTarget(pyramid: Pyramid | null, tier: Tier): number {
+  if (!pyramid) return 100;
+  if (tier === "top") return pyramid.top;
+  if (tier === "mid") return pyramid.mid;
+  if (tier === "base") return pyramid.base;
+  return 100;
 }
 
 /**

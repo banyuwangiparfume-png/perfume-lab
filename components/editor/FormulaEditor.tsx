@@ -684,6 +684,14 @@ export function FormulaEditor(props: FormulaEditorProps) {
               onApplySolvent={applySolvent}
               onlyStock={onlyStock}
               onOnlyStockChange={changeOnlyStock}
+              onReduceLine={(lineId, pct) => {
+                // Lewat aksi store yang sama dengan mengetik persen atau
+                // menghapus baris — jadi pembagian ulangnya persis seperti
+                // pratinjau, dan bisa di-Undo.
+                const st = useEditorStore.getState();
+                if (pct <= 0) st.removeLine(lineId);
+                else st.editPct(lineId, pct);
+              }}
             />
           </div>
         </aside>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   AlertTriangle,
   ChevronDown,
@@ -17,6 +17,7 @@ import { PHASE_META } from "@/lib/calc/phases";
 import type { BridgeStatus, BridgeSuggestion } from "@/lib/calc/bridge";
 import { FUNCTION_HINTS, SPL_NOTE, UNKNOWN_KEY } from "@/lib/calc/functions";
 import { fmtGram, fmtIdr, fmtNum, fmtPct } from "@/lib/calc/format";
+import { facetReducers } from "@/lib/calc/reduce";
 import { RULES_FOOTER, RULES_HEALTHY, type Warning } from "@/lib/calc/rules";
 import type { FormulaContext, Tier } from "@/lib/calc/types";
 import { PYRAMID_TIERS, TIER_META, facetColor, facetLabel } from "@/lib/tiers";
@@ -113,6 +114,93 @@ export function WarningList({
           );
         })}
     </ul>
+  );
+}
+
+/**
+ * Turunkan satu irisan aroma: baris draf mana yang paling bertanggung jawab,
+ * dan apa yang terjadi kalau dikurangi setengah atau dihapus.
+ *
+ * Dihitung saat dibuka, bukan di analyze(): tiap baris butuh dua pratinjau
+ * yang membentangkan ulang formula, dan itu tidak perlu dikerjakan untuk
+ * irisan yang tidak pernah dibuka.
+ */
+function ReducePanel({
+  context,
+  facet,
+  scope,
+  onReduce,
+}: {
+  context: FormulaContext;
+  facet: string;
+  scope: "all" | Tier;
+  onReduce: (lineId: string, newPct: number) => void;
+}) {
+  const r = useMemo(
+    () => facetReducers(context, facet, scope as Tier),
+    [context, facet, scope],
+  );
+
+  return (
+    <div className="ml-4.5 mt-1.5 space-y-2 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-2.5">
+      <p className="text-[11px] leading-relaxed text-[var(--text-subtle)]">
+        Baris di draf yang paling banyak membawa {facetLabel(facet)}
+        {scope !== "all" && ` di ${TIER_META[scope].label}`}. Angkanya sudah
+        memperhitungkan baris lain di tier yang naik mengisi sisanya.
+      </p>
+      {r.lines.length === 0 ? (
+        <p className="text-[12px] text-[var(--text-muted)]">
+          Tidak ada satu baris yang menggeser irisan ini secara berarti — dia
+          tersebar tipis di banyak bahan.
+        </p>
+      ) : (
+        <ul className="space-y-1.5">
+          {r.lines.map((l) => (
+            <li
+              key={l.lineId}
+              className="rounded border border-[var(--border)] px-2 py-1.5"
+            >
+              <div className="flex items-baseline gap-2">
+                <span className="min-w-0 flex-1 truncate text-[12px] font-medium">
+                  {l.name}
+                </span>
+                {l.tier !== "all" && (
+                  <span className="text-[10px] font-semibold uppercase text-[var(--text-subtle)]">
+                    {TIER_META[l.tier].label}
+                  </span>
+                )}
+                <span className="numeric text-[11px] text-[var(--text-muted)]">
+                  {fmtPct(l.pct)}
+                </span>
+              </div>
+              <div className="mt-1 flex flex-wrap gap-1.5">
+                {l.options.map((o) => (
+                  <Button
+                    key={o.action}
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-auto px-2 py-1 text-[11px]"
+                    onClick={() => onReduce(l.lineId, o.newPct)}
+                  >
+                    <span className="numeric">
+                      {o.action === "half"
+                        ? `Jadi ${fmtPct(o.newPct)}`
+                        : "Hapus"}
+                      {Number.isFinite(o.afterPct) &&
+                        ` · ${fmtPct(r.beforePct)} → ${fmtPct(o.afterPct)}`}
+                    </span>
+                  </Button>
+                ))}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="text-[11px] text-[var(--text-subtle)]">
+        Bisa dibatalkan dengan Undo.
+      </p>
+    </div>
   );
 }
 
@@ -313,15 +401,23 @@ function StatTile({ value, label }: { value: React.ReactNode; label: string }) {
 
 function AromaTab({
   analysis,
+  context,
   onAdd,
+  onReduce,
 }: {
   analysis: Analysis;
+  context: FormulaContext;
   onAdd?: (materialId: string, tier: Tier, dose: number) => void;
+  onReduce?: (lineId: string, newPct: number) => void;
 }) {
   const [scope, setScope] = useState<"all" | Tier>("all");
-  // Irisan yang sedang dibuka saran "naikkan"-nya. Satu saja sekaligus —
-  // dua daftar saran yang terbuka bersamaan sulit dibandingkan.
-  const [boosting, setBoosting] = useState<string | null>(null);
+  // Irisan dan arah yang sedang dibuka. Satu saja sekaligus — dua daftar
+  // saran yang terbuka bersamaan sulit dibandingkan.
+  const [panel, setPanel] = useState<{ facet: string; dir: "up" | "down" } | null>(null);
+  const boosting = panel?.dir === "up" ? panel.facet : null;
+  const reducing = panel?.dir === "down" ? panel.facet : null;
+  const togglePanel = (facet: string, dir: "up" | "down") =>
+    setPanel(panel?.facet === facet && panel.dir === dir ? null : { facet, dir });
   const boostsHere = analysis.boosts[scope as Tier] ?? {};
   const pie = analysis.aroma[scope as Tier] ?? analysis.aroma.all;
   const slices = [
@@ -433,10 +529,31 @@ function AromaTab({
               <span className="flex-1">{s.name}</span>
               {/* Untuk pie satu tier, yang disarankan hanya bahan yang
                   menguap di tier itu, dan kenaikannya diukur di pie tier itu. */}
+              {onReduce && s.key !== "__other" && (
+                <button
+                  type="button"
+                  onClick={() => togglePanel(s.key, "down")}
+                  aria-expanded={reducing === s.key}
+                  className={cn(
+                    "flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[11px] font-medium",
+                    reducing === s.key
+                      ? "bg-[var(--cta)] text-white"
+                      : "text-[var(--text-muted)] hover:bg-[var(--surface-muted)] hover:text-[var(--text)]",
+                  )}
+                >
+                  Turunkan
+                  <ChevronDown
+                    className={cn(
+                      "size-3 transition-transform",
+                      reducing === s.key && "rotate-180",
+                    )}
+                  />
+                </button>
+              )}
               {onAdd && boostsHere[s.key] && (
                 <button
                   type="button"
-                  onClick={() => setBoosting(boosting === s.key ? null : s.key)}
+                  onClick={() => togglePanel(s.key, "up")}
                   aria-expanded={boosting === s.key}
                   className={cn(
                     "flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[11px] font-medium",
@@ -508,6 +625,17 @@ function AromaTab({
                 scope={scope}
                 boosts={boostsHere[s.key]}
                 onAdd={onAdd}
+              />
+            )}
+            {reducing === s.key && onReduce && (
+              <ReducePanel
+                context={context}
+                facet={s.key}
+                scope={scope}
+                onReduce={(lineId, pct) => {
+                  onReduce(lineId, pct);
+                  setPanel(null);
+                }}
               />
             )}
           </li>
@@ -1302,6 +1430,7 @@ export function AnalysisPanel({
   onApplySolvent,
   onlyStock = false,
   onOnlyStockChange,
+  onReduceLine,
 }: {
   analysis: Analysis;
   context: FormulaContext;
@@ -1312,6 +1441,8 @@ export function AnalysisPanel({
   onlyStock?: boolean;
   /** tanpa ini filternya tidak ditampilkan — halaman baca tidak punya saran */
   onOnlyStockChange?: (value: boolean) => void;
+  /** ubah persen satu baris draf; 0 = hapus barisnya */
+  onReduceLine?: (lineId: string, newPct: number) => void;
 }) {
   const [tab, setTab] = useState<TabKey>("ringkasan");
   const alerts = analysis.warnings.filter((w) => w.level !== "info").length;
@@ -1362,7 +1493,14 @@ export function AnalysisPanel({
         </div>
       )}
 
-      {tab === "aroma" && <AromaTab analysis={analysis} onAdd={onAddBridge} />}
+      {tab === "aroma" && (
+        <AromaTab
+          analysis={analysis}
+          context={context}
+          onAdd={onAddBridge}
+          onReduce={onReduceLine}
+        />
+      )}
       {tab === "kekuatan" && <StrengthTab analysis={analysis} />}
       {tab === "fungsi" && <FunctionTab analysis={analysis} />}
       {tab === "pelarut" && (
