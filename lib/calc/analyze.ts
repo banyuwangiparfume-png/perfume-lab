@@ -11,6 +11,8 @@ import { roleReport, type RoleReport } from "./roles";
 import { functionMix, shareOf, type FunctionMix } from "./functions";
 import { lineTable, type LineTable } from "./lines";
 import { phaseReport, type PhaseReport } from "./phases";
+import { splScore, type SplScore } from "./spl";
+import { facetBoosts, type FacetBoosts } from "./boost";
 import { runRules, type Warning } from "./rules";
 import { solventReport, type SolventReport } from "./solvents";
 import {
@@ -29,6 +31,10 @@ export type Analysis = {
   strength: StrengthResult;
   /** kekuatan per fase: Opening, Heart, Drydown — pendekatan dari tier */
   phases: PhaseReport;
+  /** perkiraan sillage/projection/longevity dari susunan — bukan pengukuran */
+  spl: SplScore;
+  /** saran per irisan aroma: modifier / diffuser / fixative yang menaikkannya */
+  boosts: FacetBoosts;
   /** komposisi peran bahan: diffuser / modifier / bridger / fixative */
   functions: FunctionMix;
   /**
@@ -183,6 +189,18 @@ export function analyze(
     lines,
     strength,
     phases: phaseReport(ctx, items),
+    spl: splScore(ctx, items),
+    // Dihitung untuk irisan yang tampil di pie seluruh formula saja — itu
+    // yang bisa diklik user. Ikut dimatikan saat mengetik, sama dengan saran
+    // lain yang mahal.
+    boosts: skipRoles
+      ? {}
+      : facetBoosts(
+          ctx,
+          items,
+          aroma.all.slices.map((x) => x.facet),
+          { onlyStock: opts.onlyStockBridges, totalScore: strength.totalScore },
+        ),
     functions,
     diffusers,
     fixatives,

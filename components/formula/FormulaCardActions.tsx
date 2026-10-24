@@ -6,12 +6,14 @@ import {
   Archive,
   ArchiveRestore,
   Copy,
+  FileDown,
   MoreHorizontal,
   Pencil,
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import {
   Dialog,
@@ -50,15 +52,24 @@ export function FormulaCardActions({
   name,
   versionCount,
   archived,
+  versionId,
 }: {
   id: string;
   name: string;
   versionCount: number;
   archived: boolean;
+  /** versi yang diekspor; kosong = versi tersimpan terbaru */
+  versionId?: string;
 }) {
   const router = useRouter();
   const [confirming, setConfirming] = useState(false);
   const [renaming, setRenaming] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [withCost, setWithCost] = useState(true);
+  const exportHref = `/formulas/${id}/export?${new URLSearchParams({
+    ...(versionId ? { v: versionId } : {}),
+    ...(withCost ? { hpp: "1" } : {}),
+  })}`;
   const [newName, setNewName] = useState(name);
   const [pending, start] = useTransition();
 
@@ -130,6 +141,11 @@ export function FormulaCardActions({
             Ganti nama
           </DropdownMenuItem>
 
+          <DropdownMenuItem onSelect={() => setExporting(true)}>
+            <FileDown className="size-4" />
+            Export Excel
+          </DropdownMenuItem>
+
           <DropdownMenuItem
             onSelect={() =>
               start(async () => {
@@ -174,6 +190,48 @@ export function FormulaCardActions({
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+
+      <Dialog open={exporting} onOpenChange={setExporting}>
+        <DialogContent className="max-w-[460px]">
+          <DialogHeader>
+            <DialogTitle>Export {name}</DialogTitle>
+            <DialogDescription>
+              Komposisi lengkap — persen, gram, dilusi, bahan murni, impact,
+              kekuatan, peran, dan facet — ditambah ringkasan piramida, SPL,
+              aroma, dan peringatan. Lembar Formula-nya bisa diimpor balik.
+            </DialogDescription>
+          </DialogHeader>
+
+          <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-[var(--border)] p-3">
+            <Checkbox
+              checked={withCost}
+              onCheckedChange={(v) => setWithCost(v === true)}
+              className="mt-0.5"
+            />
+            <span>
+              <span className="block text-[13px] font-medium">
+                Sertakan HPP & harga
+              </span>
+              <span className="block text-[12px] leading-relaxed text-[var(--text-muted)]">
+                Lembar HPP per bahan, plus HPP per gram dan per batch. Matikan
+                kalau berkasnya mau dibagikan ke orang lain.
+              </span>
+            </span>
+          </label>
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setExporting(false)}>
+              Batal
+            </Button>
+            <Button asChild>
+              <a href={exportHref} download onClick={() => setExporting(false)}>
+                <FileDown className="size-4" />
+                Unduh .xlsx
+              </a>
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={renaming} onOpenChange={setRenaming}>
         <DialogContent className="max-w-[440px]">

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import {
   AlertTriangle,
+  ChevronDown,
   CheckCircle2,
   Info,
   OctagonAlert,
@@ -118,6 +119,188 @@ export function WarningList({
   );
 }
 
+const BOOST_TABS = [
+  { key: "modifier", label: "Modifier", hint: "menambah karakter itu sendiri" },
+  { key: "diffuser", label: "Diffuser", hint: "membawanya keluar lebih jauh" },
+  { key: "fixative", label: "Fixative", hint: "menahannya lebih lama" },
+] as const;
+
+/**
+ * Saran untuk menaikkan satu irisan aroma, dipisah per peran. Tiga peran itu
+ * menjawab tiga keinginan berbeda di balik "woody-nya kurang": kurang
+ * banyak, kurang terdengar, atau kurang lama.
+ */
+function BoostPanel({
+  facet,
+  boosts,
+  onAdd,
+}: {
+  facet: string;
+  boosts: Analysis["boosts"][string];
+  onAdd: (materialId: string, tier: Tier, dose: number) => void;
+}) {
+  const [role, setRole] = useState<(typeof BOOST_TABS)[number]["key"]>(
+    () => BOOST_TABS.find((t) => boosts[t.key].length > 0)?.key ?? "modifier",
+  );
+  const list = boosts[role];
+  const tab = BOOST_TABS.find((t) => t.key === role)!;
+
+  return (
+    <div className="ml-4.5 mt-1.5 space-y-2 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-2.5">
+      <Tabs value={role} onValueChange={(v) => setRole(v as typeof role)}>
+        <TabsList className="w-full">
+          {BOOST_TABS.map((t) => (
+            <TabsTrigger key={t.key} value={t.key}>
+              {t.label}
+              <span className="ml-1 text-[10px] text-[var(--text-subtle)]">
+                {boosts[t.key].length}
+              </span>
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
+      <p className="text-[11px] text-[var(--text-subtle)]">
+        {tab.label} {facetLabel(facet)} — {tab.hint}.
+      </p>
+
+      {list.length === 0 ? (
+        <p className="text-[12px] text-[var(--text-muted)]">
+          Tidak ada {tab.label.toLowerCase()} berarah {facetLabel(facet)} yang
+          benar-benar menggeser irisan ini.
+        </p>
+      ) : (
+        <ul className="space-y-1.5">
+          {list.map((b) => (
+            <li
+              key={b.materialId}
+              className="flex items-start gap-2 rounded border border-[var(--border)] px-2 py-1.5"
+            >
+              <div className="min-w-0 flex-1">
+                <p className="text-[12px] font-medium">
+                  {b.name}
+                  {b.inStock && <span className="ml-1 text-[var(--warn)]">★</span>}
+                </p>
+                <p className="numeric text-[11px] text-[var(--text-muted)]">
+                  di {fmtPct(b.starterDose)}: {facetLabel(facet)}{" "}
+                  {fmtPct(b.beforePct)} → {fmtPct(b.afterPct)}
+                </p>
+                {b.guessedRole && (
+                  <p className="text-[11px] text-[var(--text-subtle)]">
+                    perannya ditebak dari family
+                  </p>
+                )}
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 px-2 text-[11px]"
+                onClick={() => onAdd(b.materialId, b.tier, b.starterDose)}
+              >
+                + {TIER_META[b.tier].label}
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+const SPL_META = {
+  sillage: { short: "S", label: "Sillage", hint: "jejak yang ditinggalkan" },
+  projection: { short: "P", label: "Projection", hint: "seberapa jauh dari kulit" },
+  longevity: { short: "L", label: "Longevity", hint: "seberapa lama bertahan" },
+} as const;
+
+/**
+ * Perkiraan SPL. Tiap faktor ditampilkan dengan patokannya supaya angkanya
+ * bisa dibantah — skor yang tidak bisa ditelusuri asalnya cuma akan dipercaya
+ * atau diabaikan, dua-duanya sama tidak bergunanya.
+ */
+function SplCard({ spl }: { spl: Analysis["spl"] }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="space-y-3 rounded-lg border border-[var(--border)] p-3">
+      <div className="grid grid-cols-3 gap-2">
+        {(["sillage", "projection", "longevity"] as const).map((k) => (
+          <div key={k}>
+            <div className="flex items-baseline gap-1">
+              <span className="numeric text-[22px] font-semibold leading-none">
+                {spl[k].toLocaleString("id-ID", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
+              </span>
+              <span className="text-[11px] text-[var(--text-subtle)]">/10</span>
+            </div>
+            <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-[var(--surface-muted)]">
+              <div
+                className="h-full rounded-full bg-[var(--brand)]"
+                style={{ width: `${spl[k] * 10}%` }}
+              />
+            </div>
+            <p className="mt-1 text-[12px] font-medium">{SPL_META[k].label}</p>
+            <p className="text-[11px] leading-snug text-[var(--text-subtle)]">
+              {SPL_META[k].hint}
+            </p>
+          </div>
+        ))}
+      </div>
+
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="text-[12px] font-medium text-[var(--text-muted)] hover:text-[var(--text)]"
+        aria-expanded={open}
+      >
+        {open ? "Sembunyikan" : "Dari mana angkanya?"}
+      </button>
+
+      {open && (
+        <ul className="space-y-2">
+          {spl.factors.map((f) => (
+            <li key={f.key}>
+              <div className="flex items-baseline gap-2 text-[12px]">
+                <span className="font-medium">{f.label}</span>
+                <span className="text-[10px] font-semibold tracking-wide text-[var(--text-subtle)]">
+                  {f.feeds.map((x) => SPL_META[x].short).join(" ")}
+                </span>
+                <span className="numeric ml-auto text-[var(--text-muted)]">
+                  {f.unit === "%" ? fmtPct(f.value) : Math.round(f.value)}
+                  <span className="text-[var(--text-subtle)]">
+                    {" "}
+                    / {f.unit === "%" ? fmtPct(f.fullAt) : f.fullAt}
+                  </span>
+                </span>
+              </div>
+              <div className="mt-1 h-1 overflow-hidden rounded-full bg-[var(--surface-muted)]">
+                <div
+                  className="h-full rounded-full bg-[var(--text-subtle)]"
+                  style={{ width: `${f.score * 100}%` }}
+                />
+              </div>
+              <p className="mt-0.5 text-[11px] leading-snug text-[var(--text-subtle)]">
+                {f.meaning}
+              </p>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {spl.notes.map((n) => (
+        <p key={n} className="rounded bg-[var(--info-soft)] px-2.5 py-1.5 text-[12px] leading-relaxed">
+          {n}
+        </p>
+      ))}
+
+      <p className="text-[11px] leading-relaxed text-[var(--text-subtle)]">
+        Perkiraan dari susunan formula, bukan pengukuran — konsentrasi di botol,
+        kulit, dan cuaca tidak ikut dihitung. Pakai untuk membandingkan versi
+        pada konsentrasi yang sama; berapa jam sebenarnya tetap hidungmu yang
+        menilai.
+      </p>
+    </div>
+  );
+}
+
 function StatTile({ value, label }: { value: React.ReactNode; label: string }) {
   return (
     <div className="rounded-lg border border-[var(--border)] px-3 py-2">
@@ -127,8 +310,17 @@ function StatTile({ value, label }: { value: React.ReactNode; label: string }) {
   );
 }
 
-function AromaTab({ analysis }: { analysis: Analysis }) {
+function AromaTab({
+  analysis,
+  onAdd,
+}: {
+  analysis: Analysis;
+  onAdd?: (materialId: string, tier: Tier, dose: number) => void;
+}) {
   const [scope, setScope] = useState<"all" | Tier>("all");
+  // Irisan yang sedang dibuka saran "naikkan"-nya. Satu saja sekaligus —
+  // dua daftar saran yang terbuka bersamaan sulit dibandingkan.
+  const [boosting, setBoosting] = useState<string | null>(null);
   const pie = analysis.aroma[scope as Tier] ?? analysis.aroma.all;
   const slices = [
     ...pie.slices.map((s) => ({
@@ -237,6 +429,29 @@ function AromaTab({ analysis }: { analysis: Analysis }) {
                 }}
               />
               <span className="flex-1">{s.name}</span>
+              {/* Saran hanya untuk pie seluruh formula: dosis dan kenaikannya
+                  dihitung terhadap formula utuh, bukan satu tier. */}
+              {scope === "all" && onAdd && analysis.boosts[s.key] && (
+                <button
+                  type="button"
+                  onClick={() => setBoosting(boosting === s.key ? null : s.key)}
+                  aria-expanded={boosting === s.key}
+                  className={cn(
+                    "flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[11px] font-medium",
+                    boosting === s.key
+                      ? "bg-[var(--cta)] text-white"
+                      : "text-[var(--text-muted)] hover:bg-[var(--surface-muted)] hover:text-[var(--text)]",
+                  )}
+                >
+                  Naikkan
+                  <ChevronDown
+                    className={cn(
+                      "size-3 transition-transform",
+                      boosting === s.key && "rotate-180",
+                    )}
+                  />
+                </button>
+              )}
               <span className="numeric font-medium">{fmtPct(s.value)}</span>
             </div>
 
@@ -283,6 +498,14 @@ function AromaTab({ analysis }: { analysis: Analysis }) {
                 {s.contributors.length > 4 &&
                   ` · +${s.contributors.length - 4} lagi`}
               </p>
+            )}
+
+            {boosting === s.key && onAdd && analysis.boosts[s.key] && (
+              <BoostPanel
+                facet={s.key}
+                boosts={analysis.boosts[s.key]}
+                onAdd={onAdd}
+              />
             )}
           </li>
         ))}
@@ -1020,26 +1243,19 @@ export function AnalysisPanel({
 
       {tab === "ringkasan" && (
         <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-2">
-            <StatTile value={materialCount} label="bahan (dibentangkan)" />
-            <StatTile value={fmtPct(activePct)} label="bahan aktif" />
-            <StatTile value={fmtIdr(analysis.cost.perGram)} label="HPP / gram" />
-            <StatTile
-              value={
-                dominantFacet ? (
-                  <span className="capitalize">{dominantFacet.facet}</span>
-                ) : (
-                  "—"
-                )
-              }
-              label="facet dominan"
-            />
-          </div>
+          <SplCard spl={analysis.spl} />
+          {/* Empat angka yang dulu jadi kotak besar, sekarang satu baris:
+              tetap terlihat sekilas, tanpa merebut tempat dari SPL. */}
+          <p className="numeric text-[12px] text-[var(--text-muted)]">
+            {materialCount} bahan · aktif {fmtPct(activePct)} · HPP{" "}
+            {fmtIdr(analysis.cost.perGram)}/g
+            {dominantFacet && ` · dominan ${facetLabel(dominantFacet.facet)}`}
+          </p>
           <WarningList warnings={analysis.warnings} onAction={onWarningAction} />
         </div>
       )}
 
-      {tab === "aroma" && <AromaTab analysis={analysis} />}
+      {tab === "aroma" && <AromaTab analysis={analysis} onAdd={onAddBridge} />}
       {tab === "kekuatan" && <StrengthTab analysis={analysis} />}
       {tab === "fungsi" && <FunctionTab analysis={analysis} />}
       {tab === "pelarut" && (
@@ -1054,7 +1270,10 @@ export function AnalysisPanel({
         fixative, dan pilihannya ikut terbawa saat berpindah tab.
       */}
       {onOnlyStockChange &&
-        (tab === "bridger" || tab === "diffuser" || tab === "fixative") && (
+        (tab === "aroma" ||
+          tab === "bridger" ||
+          tab === "diffuser" ||
+          tab === "fixative") && (
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"

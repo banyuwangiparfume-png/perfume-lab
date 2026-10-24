@@ -76,6 +76,7 @@ export default async function FormulaDetailPage({
           name={formula.name}
           versionCount={savedVersions.length}
           archived={formula.is_archived}
+          versionId={selected.id}
         />
         <Button asChild variant="outline">
           <Link href={`/stock/produksi?v=${selected.id}`}>
