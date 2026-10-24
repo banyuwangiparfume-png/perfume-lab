@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import {
   AlertTriangle,
+  ArrowLeft,
   ChevronDown,
   CheckCircle2,
   Info,
@@ -17,7 +18,9 @@ import { phaseLever } from "@/lib/calc/phaseAdjust";
 import { PHASE_META, PHASE_PRESENCE, type PhaseKey } from "@/lib/calc/phases";
 import type { BridgeStatus, BridgeSuggestion } from "@/lib/calc/bridge";
 import { fmtGram, fmtIdr, fmtNum, fmtPct } from "@/lib/calc/format";
+import { facetDrilldown } from "@/lib/calc/drilldown";
 import { facetReducers } from "@/lib/calc/reduce";
+import { OTHER_SUBNOTE, subnoteLabel } from "@/lib/calc/subnotes";
 import { RULES_FOOTER, RULES_HEALTHY, type Warning } from "@/lib/calc/rules";
 import type { FormulaContext, Pyramid, Tier } from "@/lib/calc/types";
 import { PYRAMID_TIERS, TIER_META, facetColor, facetLabel } from "@/lib/tiers";
@@ -444,10 +447,14 @@ function StatTile({ value, label }: { value: React.ReactNode; label: string }) {
 function LabeledDonut({
   slices,
   center,
+  onSliceClick,
 }: {
   slices: { key: string; label: string; value: number; color: string }[];
   center: { label: string; value: string } | null;
+  /** irisan yang bisa dibuka; "__other" tidak pernah bisa */
+  onSliceClick?: (key: string) => void;
 }) {
+  const clickable = (key: string) => !!onSliceClick && key !== "__other";
   const layout = donutLayout(slices.map((s) => ({ key: s.key, value: s.value })));
   const byKey = new Map(slices.map((s) => [s.key, s]));
   return (
@@ -458,12 +465,24 @@ function LabeledDonut({
       aria-label={slices.map((s) => `${s.label} ${fmtPct(s.value)}`).join(", ")}
     >
       {layout.map((l) => (
-        <path key={l.key} d={l.path} fill={byKey.get(l.key)!.color} />
+        <path
+          key={l.key}
+          d={l.path}
+          fill={byKey.get(l.key)!.color}
+          onClick={clickable(l.key) ? () => onSliceClick!(l.key) : undefined}
+          className={clickable(l.key) ? "cursor-pointer hover:opacity-80" : undefined}
+        >
+          {clickable(l.key) && <title>{`Lihat isi ${byKey.get(l.key)!.label}`}</title>}
+        </path>
       ))}
       {layout.map((l) => {
         const s = byKey.get(l.key)!;
         return (
-          <g key={`lbl-${l.key}`}>
+          <g
+            key={`lbl-${l.key}`}
+            onClick={clickable(l.key) ? () => onSliceClick!(l.key) : undefined}
+            className={clickable(l.key) ? "cursor-pointer" : undefined}
+          >
             <polyline
               points={l.leader.map((p) => p.join(",")).join(" ")}
               fill="none"
@@ -478,11 +497,14 @@ function LabeledDonut({
               dominantBaseline="middle"
               fontSize={11}
             >
+              {/* Label panjang dipendekkan supaya tidak keluar kanvas; nama
+                  lengkapnya muncul saat kursor diarahkan. */}
+              <title>{`${s.label} ${fmtPct(s.value)}`}</title>
               <tspan
                 fontWeight={600}
                 fill={`color-mix(in oklab, ${s.color} 78%, var(--text))`}
               >
-                {s.label}
+                {s.label.length > 20 ? `${s.label.slice(0, 19).trimEnd()}…` : s.label}
               </tspan>
               {/* Jarak lewat dx, bukan spasi: SVG membuang spasi di awal
                   tspan, dan "Woody20,6%" yang menempel sulit dibaca. */}
@@ -514,18 +536,122 @@ function LabeledDonut({
   );
 }
 
+/**
+ * Isi satu irisan: donat sub-aroma ("Woody-nya kayu apa?") dan daftar bahan
+ * per kelompok. Dihitung saat dibuka. Persennya porsi DARI IRISAN ITU,
+ * supaya donatnya berjumlah 100% — "Woody-nya 40% sandalwood".
+ */
+function DrillView({
+  analysis,
+  context,
+  facet,
+  scope,
+  materialText,
+  onBack,
+}: {
+  analysis: Analysis;
+  context: FormulaContext;
+  facet: string;
+  scope: "all" | Tier;
+  materialText?: Record<string, string>;
+  onBack: () => void;
+}) {
+  const d = useMemo(
+    () =>
+      facetDrilldown(
+        analysis.items,
+        context.materials,
+        facet,
+        (id) => materialText?.[id] ?? context.materials.get(id)?.name ?? "",
+        scope as Tier,
+      ),
+    [analysis.items, context.materials, facet, materialText, scope],
+  );
+  const facetName = facetLabel(facet);
+  const base = facetColor(facet);
+  // Kelompok diberi gradasi dari warna facet-nya, supaya tetap terbaca
+  // sebagai "bagian dari Woody"; sisa "lain" selalu abu.
+  const colorOf = (key: string, i: number) =>
+    key === OTHER_SUBNOTE
+      ? "var(--facet-other)"
+      : `color-mix(in oklab, ${base} ${Math.max(35, 100 - i * 13)}%, white)`;
+  const labelOf = (key: string) =>
+    d.bySubnote
+      ? subnoteLabel(facet, key, facetName)
+      : (context.materials.get(key)?.name ?? key);
+  const groups = d.groups.map((g, i) => ({ ...g, color: colorOf(g.key, i), label: labelOf(g.key) }));
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={onBack}
+          className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[12px] font-medium text-[var(--text-muted)] hover:bg-[var(--surface-muted)] hover:text-[var(--text)]"
+        >
+          <ArrowLeft className="size-3.5" />
+          Semua aroma
+        </button>
+        <span className="ml-auto text-[12px] text-[var(--text-muted)]">
+          <span className="font-semibold" style={{ color: `color-mix(in oklab, ${base} 78%, var(--text))` }}>
+            {facetName}
+          </span>{" "}
+          {fmtPct(d.slicePct)} dari {scope === "all" ? "formula" : TIER_META[scope].label}
+        </span>
+      </div>
+
+      {groups.length === 0 ? (
+        <p className="text-[13px] text-[var(--text-muted)]">Irisan ini kosong di pie ini.</p>
+      ) : (
+        <>
+          <LabeledDonut
+            slices={groups.map((g) => ({ key: g.key, label: g.label, value: g.pct, color: g.color }))}
+            center={{ label: facetName, value: fmtPct(d.slicePct) }}
+          />
+          <ul className="space-y-2 text-[13px]">
+            {groups.map((g) => (
+              <li key={g.key}>
+                <div className="flex items-center gap-2">
+                  <span aria-hidden className="size-2.5 shrink-0 rounded-sm" style={{ backgroundColor: g.color }} />
+                  <span className="flex-1 font-medium">{g.label}</span>
+                  <span className="numeric font-medium">{fmtPct(g.pct)}</span>
+                </div>
+                {d.bySubnote && (
+                  <p className="ml-4.5 text-[11px] leading-relaxed text-[var(--text-subtle)]">
+                    {g.materials.map((m) => `${m.name} ${fmtPct(m.pct)}`).join(" · ")}
+                  </p>
+                )}
+              </li>
+            ))}
+          </ul>
+          <p className="text-[11px] leading-relaxed text-[var(--text-subtle)]">
+            {d.bySubnote
+              ? `Persen = porsi dari ${facetName}. Pengelompokan dari nama bahan dan odour profile supplier; yang tidak cocok dengan kelompok mana pun masuk "${facetName} lain".`
+              : `Persen = porsi dari ${facetName}. Sub-aroma untuk ${facetName} belum dipetakan, jadi isinya dipecah per bahan.`}
+          </p>
+        </>
+      )}
+    </div>
+  );
+}
+
 function AromaTab({
   analysis,
   context,
   onAdd,
   onReduce,
+  materialText,
 }: {
   analysis: Analysis;
   context: FormulaContext;
   onAdd?: (materialId: string, tier: Tier, dose: number) => void;
   onReduce?: (lineId: string, newPct: number) => void;
+  materialText?: Record<string, string>;
 }) {
   const [scope, setScope] = useState<"all" | Tier>("all");
+  // Irisan yang sedang dibuka isinya ("Woody-nya kayu apa?"). Ganti pie
+  // (Semua/Top/Mid/Base) menutupnya — isinya dihitung per pie.
+  const [drill, setDrill] = useState<string | null>(null);
   // Irisan dan arah yang sedang dibuka. Satu saja sekaligus — dua daftar
   // saran yang terbuka bersamaan sulit dibandingkan.
   const [panel, setPanel] = useState<{ facet: string; dir: "up" | "down" } | null>(null);
@@ -569,7 +695,13 @@ function AromaTab({
 
   return (
     <div className="space-y-3">
-      <Tabs value={scope} onValueChange={(v) => setScope(v as "all" | Tier)}>
+      <Tabs
+        value={scope}
+        onValueChange={(v) => {
+          setScope(v as "all" | Tier);
+          setDrill(null);
+        }}
+      >
         <TabsList className="w-full">
           <TabsTrigger value="all">Semua</TabsTrigger>
           {PYRAMID_TIERS.map((t) => (
@@ -580,6 +712,17 @@ function AromaTab({
         </TabsList>
       </Tabs>
 
+      {drill ? (
+        <DrillView
+          analysis={analysis}
+          context={context}
+          facet={drill}
+          scope={scope}
+          materialText={materialText}
+          onBack={() => setDrill(null)}
+        />
+      ) : (
+      <>
       <LabeledDonut
         slices={slices.map((sl) => ({
           key: sl.key,
@@ -588,7 +731,11 @@ function AromaTab({
           color: sl.key === "__other" ? "var(--facet-other)" : facetColor(sl.key),
         }))}
         center={dominant ? { label: facetLabel(dominant.facet), value: fmtPct(dominant.pct) } : null}
+        onSliceClick={setDrill}
       />
+      <p className="-mt-1 text-center text-[11px] text-[var(--text-subtle)]">
+        Klik irisan untuk melihat isinya
+      </p>
 
 {/*
         Tiap irisan menjawab tiga hal berurutan: seberapa besar, ke arah mana,
@@ -612,7 +759,18 @@ function AromaTab({
                       : facetColor(s.key),
                 }}
               />
-              <span className="flex-1">{s.name}</span>
+              {s.key === "__other" ? (
+                <span className="flex-1">{s.name}</span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setDrill(s.key)}
+                  className="flex-1 text-left hover:underline"
+                  title={`Lihat isi ${s.name}`}
+                >
+                  {s.name}
+                </button>
+              )}
               {/* Untuk pie satu tier, yang disarankan hanya bahan yang
                   menguap di tier itu, dan kenaikannya diukur di pie tier itu. */}
               {onReduce && s.key !== "__other" && (
@@ -737,6 +895,9 @@ function AromaTab({
           Angka di baris <span className="font-medium">condong ke</span>
           dihitung terhadap irisannya sendiri, bukan terhadap seluruh formula.
         </p>
+      )}
+
+      </>
       )}
 
       {(pie.excludedPct > 0.05 || pie.missingFacets.length > 0) && (
@@ -1578,6 +1739,7 @@ export function AnalysisPanel({
   onOnlyStockChange,
   onReduceLine,
   onSetPyramid,
+  materialText,
 }: {
   analysis: Analysis;
   context: FormulaContext;
@@ -1591,6 +1753,8 @@ export function AnalysisPanel({
   onReduceLine?: (lineId: string, newPct: number) => void;
   /** ganti target piramida — baris tiap tier diskalakan seperti editor */
   onSetPyramid?: (pyramid: Pyramid) => void;
+  /** "nama | sinonim | odour profile" per bahan — untuk sub-aroma */
+  materialText?: Record<string, string>;
 }) {
   const [tab, setTab] = useState<TabKey>("ringkasan");
   const alerts = analysis.warnings.filter((w) => w.level !== "info").length;
@@ -1646,6 +1810,7 @@ export function AnalysisPanel({
           context={context}
           onAdd={onAddBridge}
           onReduce={onReduceLine}
+          materialText={materialText}
         />
       )}
       {tab === "kekuatan" && (

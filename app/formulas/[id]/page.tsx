@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { fmtGram, fmtIdr } from "@/lib/calc/format";
 import { listEvaluationsForVersion } from "@/lib/data/evaluations";
 import { accordUsage, getFormula, pickVersion } from "@/lib/data/formulas";
+import { loadMaterialMeta } from "@/lib/data/loadEditorData";
 import { getVersionDetail } from "@/lib/data/versions";
 import { labStage } from "@/lib/lab";
 import { cn } from "@/lib/utils";
@@ -45,14 +46,22 @@ export default async function FormulaDetailPage({
   const selected = pickVersion(formula.versions, v);
   if (!selected) notFound();
 
-  const [detail, evaluations, usedIn] = await Promise.all([
+  const [detail, evaluations, usedIn, meta] = await Promise.all([
     getVersionDetail(selected.id),
     listEvaluationsForVersion(selected.id),
     formula.category === "accord" ? accordUsage(id) : Promise.resolve([]),
+    loadMaterialMeta(),
   ]);
   if (!detail) notFound();
 
   const { analysis, context } = detail;
+  // Teks untuk sub-aroma di drill-down Aroma — cuma bahan formula ini.
+  const materialText = Object.fromEntries(
+    [...context.materials.values()].map((m) => {
+      const x = meta.get(m.id);
+      return [m.id, [m.name, x?.synonym ?? "", x?.odourProfile ?? ""].join(" | ")];
+    }),
+  );
   const isEmpty = context.version.lines.length === 0;
   const stage = labStage(selected);
   const savedVersions = formula.versions.filter((x) => x.version_no > 0);
@@ -263,7 +272,11 @@ export default async function FormulaDetailPage({
           <div className="space-y-5 lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] lg:self-start lg:overflow-y-auto lg:overscroll-contain">
             <Card>
               <CardTitle>Analisa</CardTitle>
-              <AnalysisPanel analysis={analysis} context={context} />
+              <AnalysisPanel
+                analysis={analysis}
+                context={context}
+                materialText={materialText}
+              />
             </Card>
 
             <Card>

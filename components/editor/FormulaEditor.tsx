@@ -147,6 +147,19 @@ export function FormulaEditor(props: FormulaEditorProps) {
     [allMaterials, metaMap, props.data.accords, props.data.fos, props.data.solvents],
   );
 
+  // Teks per bahan untuk sub-aroma di drill-down: nama dulu, lalu sinonim,
+  // lalu odour profile — urutan itu yang menentukan prioritas pencocokan.
+  const materialText = useMemo(
+    () =>
+      Object.fromEntries(
+        allMaterials.map((m) => {
+          const meta = metaMap.get(m.id);
+          return [m.id, [m.name, meta?.synonym ?? "", meta?.odourProfile ?? ""].join(" | ")];
+        }),
+      ),
+    [allMaterials, metaMap],
+  );
+
   const stockSet = useMemo(
     () => new Set(props.data.stock),
     [props.data.stock],
@@ -696,6 +709,7 @@ export function FormulaEditor(props: FormulaEditorProps) {
                 else st.editPct(lineId, pct);
               }}
               onSetPyramid={(p) => useEditorStore.getState().setPyramid(p)}
+              materialText={materialText}
             />
           </div>
         </aside>
