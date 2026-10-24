@@ -99,7 +99,7 @@ export function ImportFormulaDialog({
         onOpenChange(o);
       }}
     >
-      <DialogContent className="max-h-[90dvh] max-w-[760px] overflow-y-auto">
+      <DialogContent className="max-h-[90dvh] sm:max-w-[760px] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Import formula</DialogTitle>
           <DialogDescription>

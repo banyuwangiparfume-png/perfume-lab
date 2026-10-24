@@ -24,7 +24,7 @@ export function NewFoDialog() {
           FO baru
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-h-[90dvh] max-w-[640px] overflow-y-auto">
+      <DialogContent className="max-h-[90dvh] sm:max-w-[640px] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>FO baru</DialogTitle>
           <DialogDescription>

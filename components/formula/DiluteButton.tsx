@@ -88,7 +88,7 @@ export function DiluteButton({
       </Button>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-[460px]">
+        <DialogContent className="sm:max-w-[460px]">
           <DialogHeader>
             <DialogTitle>Ethanol ditambahkan ke {label}</DialogTitle>
             <DialogDescription>

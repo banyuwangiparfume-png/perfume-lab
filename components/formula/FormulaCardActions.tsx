@@ -192,7 +192,7 @@ export function FormulaCardActions({
       </DropdownMenu>
 
       <Dialog open={exporting} onOpenChange={setExporting}>
-        <DialogContent className="max-w-[460px]">
+        <DialogContent className="sm:max-w-[460px]">
           <DialogHeader>
             <DialogTitle>Export {name}</DialogTitle>
             <DialogDescription>
@@ -234,7 +234,7 @@ export function FormulaCardActions({
       </Dialog>
 
       <Dialog open={renaming} onOpenChange={setRenaming}>
-        <DialogContent className="max-w-[440px]">
+        <DialogContent className="sm:max-w-[440px]">
           <DialogHeader>
             <DialogTitle>Ganti nama</DialogTitle>
             {/* Yang perlu diketahui sebelum mengganti: nama ini juga yang

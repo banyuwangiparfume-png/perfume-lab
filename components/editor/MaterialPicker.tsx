@@ -219,7 +219,7 @@ export function MaterialPicker({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[85dvh] max-w-[680px] gap-3 overflow-hidden p-0">
+      <DialogContent className="max-h-[85dvh] sm:max-w-[680px] gap-3 overflow-hidden p-0">
         <DialogHeader className="px-5 pt-5">
           <DialogTitle>
             {creating != null

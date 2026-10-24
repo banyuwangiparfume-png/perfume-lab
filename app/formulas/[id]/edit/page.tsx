@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { GitCompare, History } from "lucide-react";
 import { notFound } from "next/navigation";
 import { FormulaEditor } from "@/components/editor/FormulaEditor";
 import { PageHeader } from "@/components/shared/primitives";
@@ -30,9 +31,11 @@ export default async function EditFormulaPage({
   ]);
   if (!context) notFound();
 
-  const savedVersionCount = formula.versions.filter(
-    (v) => v.version_no > 0,
-  ).length;
+  const saved = formula.versions
+    .filter((v) => v.version_no > 0)
+    .sort((a, b) => a.version_no - b.version_no);
+  const savedVersionCount = saved.length;
+  const latestNo = saved.at(-1)?.version_no ?? 0;
 
   return (
     <>
@@ -44,8 +47,26 @@ export default async function EditFormulaPage({
             : "Parfum utuh. Ganti ukuran batch kapan saja tanpa mengubah persen."
         }
       >
+        {/* Riwayat terlihat dari editor: versi lama tidak pernah berubah, dan
+            tempat membandingkannya harus bisa ditemukan tanpa keluar dulu. */}
+        {savedVersionCount > 0 && (
+          <span className="self-center text-[12px] text-[var(--text-muted)]">
+            {savedVersionCount} versi tersimpan · terakhir v{latestNo}
+          </span>
+        )}
+        {savedVersionCount > 0 && (
+          <Button asChild variant="outline">
+            <Link href={`/formulas/${id}/compare`}>
+              <GitCompare className="size-4" />
+              Bandingkan versi
+            </Link>
+          </Button>
+        )}
         <Button asChild variant="outline">
-          <Link href={`/formulas/${id}`}>Lihat detail</Link>
+          <Link href={`/formulas/${id}`}>
+            <History className="size-4" />
+            Riwayat & detail
+          </Link>
         </Button>
       </PageHeader>
 
@@ -63,6 +84,7 @@ export default async function EditFormulaPage({
         data={data}
         meta={Object.fromEntries(meta)}
         savedVersionCount={savedVersionCount}
+        latestVersionNo={latestNo}
       />
     </>
   );

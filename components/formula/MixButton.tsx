@@ -86,7 +86,7 @@ export function MixButton({
       </Button>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-[460px]">
+        <DialogContent className="sm:max-w-[460px]">
           <DialogHeader>
             <DialogTitle>Fase minyak {label} dicampur</DialogTitle>
             <DialogDescription>

@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { sameContent, type VersionContent } from "@/lib/versionDiff";
 import {
   describeDbError,
   fail,
@@ -213,6 +214,17 @@ export async function saveVersion(
     );
   }
 
+  // Versi baru hanya kalau isinya memang berubah dari versi terakhir —
+  // versi identik membuat riwayat dan halaman banding menyesatkan.
+  if ((count ?? 0) >= 1) {
+    const same = await draftMatchesLatest(formulaId);
+    if (same) {
+      return fail(
+        `Isi draf masih sama persis dengan v${same.versionNo} — belum ada yang perlu disimpan sebagai versi baru. Ubah persen, bahan, dilusi, atau target piramida dulu.`,
+      );
+    }
+  }
+
   const { data, error } = await db.rpc("save_formula_version", {
     p_formula_id: formulaId,
     p_change_note: changeNote?.trim() || undefined,
@@ -227,6 +239,38 @@ export async function saveVersion(
   revalidatePath(`/formulas/${formulaId}`);
   revalidatePath("/formulas");
   return ok({ versionId: row.id, versionNo: row.version_no });
+}
+
+const CONTENT_SELECT =
+  "version_no, top_pct, mid_pct, base_pct, lines:formula_lines!formula_lines_formula_version_id_fkey(tier, line_type, raw_material_id, accord_version_id, fo_id, pct, user_dilution_pct, user_solvent_id)";
+
+/** Versi tersimpan terakhir kalau isinya sama dengan draf; null kalau beda. */
+async function draftMatchesLatest(
+  formulaId: string,
+): Promise<{ versionNo: number } | null> {
+  const db = getDb();
+  const [draft, latest] = await Promise.all([
+    db
+      .from("formula_versions")
+      .select(CONTENT_SELECT)
+      .eq("formula_id", formulaId)
+      .eq("version_no", 0)
+      .maybeSingle(),
+    db
+      .from("formula_versions")
+      .select(CONTENT_SELECT)
+      .eq("formula_id", formulaId)
+      .gt("version_no", 0)
+      .order("version_no", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
+  // Kalau gagal dibaca, jangan menghalangi penyimpanan — lebih baik satu
+  // versi kembar daripada tidak bisa menyimpan sama sekali.
+  if (draft.error || latest.error || !draft.data || !latest.data) return null;
+  const d = draft.data as unknown as VersionContent & { version_no: number };
+  const l = latest.data as unknown as VersionContent & { version_no: number };
+  return sameContent(d, l) ? { versionNo: l.version_no } : null;
 }
 
 // --------------------------------------------------------------------------

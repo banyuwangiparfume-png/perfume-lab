@@ -27,7 +27,7 @@ export function NewMaterialButton() {
       </Button>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-h-[90dvh] max-w-[560px] overflow-y-auto">
+        <DialogContent className="max-h-[90dvh] sm:max-w-[560px] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Bahan baru</DialogTitle>
             <DialogDescription>

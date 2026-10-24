@@ -61,6 +61,8 @@ export type FormulaEditorProps = {
   data: EditorData;
   meta: Record<string, MaterialMeta>;
   savedVersionCount: number;
+  /** nomor versi tersimpan terakhir; 0 kalau belum ada */
+  latestVersionNo: number;
 };
 
 export function FormulaEditor(props: FormulaEditorProps) {
@@ -735,11 +737,14 @@ export function FormulaEditor(props: FormulaEditorProps) {
       )}
 
       <Dialog open={saveOpen} onOpenChange={setSaveOpen}>
-        <DialogContent className="max-w-[480px]">
+        <DialogContent className="sm:max-w-[480px]">
           <DialogHeader>
             <DialogTitle>Simpan sebagai versi</DialogTitle>
             <DialogDescription>
-              Versi tersimpan dibekukan — dia yang nanti dirujuk catatan
+              Ini akan jadi <strong className="font-medium">v{props.latestVersionNo + 1}</strong>
+              {props.latestVersionNo > 0 &&
+                ` — ${props.latestVersionNo === 1 ? "v1" : `v1–v${props.latestVersionNo}`} tetap tercatat dan bisa dibandingkan`}
+              . Versi tersimpan dibekukan: dia yang nanti dirujuk catatan
               penciuman, lembar timbang, dan formula lain yang memakainya.
             </DialogDescription>
           </DialogHeader>
