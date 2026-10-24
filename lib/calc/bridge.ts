@@ -1,7 +1,7 @@
 import { normalizeL2, tierVector } from "./aroma";
 import { expand } from "./expand";
 import { strengthOf } from "./strength";
-import { syntheticItem } from "./synthetic";
+import { itemsWithTier, linesAfterAdd } from "./simulate";
 import {
   TIERS,
   type ExpandedItem,
@@ -328,8 +328,14 @@ export function crossTierBridges(
             pair: [x, y],
           })
             .map((sg) => {
-              const m = ctx.materials.get(sg.materialId)!;
-              const next = [...items, syntheticItem(m, sg.starterDose, sg.tier)];
+              // Lewat simulator tombol "+ Tier", supaya baris terbuka lain di
+              // tier tujuan ikut dibagi ulang seperti di editor.
+              const next = itemsWithTier(
+                ctx,
+                items,
+                sg.tier,
+                linesAfterAdd(ctx, { kind: "raw_material", refId: sg.materialId }, sg.tier, sg.starterDose),
+              );
               return {
                 ...sg,
                 after: sim(

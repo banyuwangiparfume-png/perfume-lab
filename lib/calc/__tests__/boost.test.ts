@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { analyze } from "../analyze";
 import { facetBoosts } from "../boost";
-import type { ExpandedItem, FormulaContext, Material } from "../types";
+import type { Material } from "../types";
+import { makeCtx } from "./ctxHelper";
 import { fixtureContext } from "./fixture";
 
 const mat = (id: string, extra: Partial<Material> = {}): Material =>
@@ -19,27 +20,17 @@ const mat = (id: string, extra: Partial<Material> = {}): Material =>
     ...extra,
   }) as unknown as Material;
 
-const item = (refId: string, pct: number): ExpandedItem => ({
-  kind: "material",
-  refId,
-  tier: "mid",
-  role: "ingredient",
-  productPct: pct,
-  activePct: pct,
-  strengthBasisPct: pct,
-  via: [],
-  sourceLineId: refId,
-});
-
+// Formula uji: rose 70 + cedar 30, keduanya di Mid dan terkunci. Lewat
+// makeCtx supaya simulator tombol "+ Tier" punya baris untuk dibagi ulang.
+const LINES = [
+  { refId: "rose", pct: 70 },
+  { refId: "cedar", pct: 30 },
+];
 const ctxOf = (materials: Material[], stock: string[] = []) =>
-  ({
-    materials: new Map(materials.map((m) => [m.id, m])),
-    stock: new Set(stock),
-    settings: undefined,
-  }) as unknown as FormulaContext;
+  makeCtx(materials, LINES, { stock }).ctx;
 
 const formula = [mat("rose", { facets: { rose: 1 }, noteTierHint: "mid" }), mat("cedar", { facets: { woody: 0.8, smoky: 0.6 } })];
-const items = [item("rose", 70), item("cedar", 30)];
+const items = makeCtx(formula, LINES).items;
 
 describe("saran per irisan aroma", () => {
   it("dikelompokkan per peran, dan tiap saran menaikkan irisan yang diminta", () => {

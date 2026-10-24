@@ -694,6 +694,7 @@ export function FormulaEditor(props: FormulaEditorProps) {
                 if (pct <= 0) st.removeLine(lineId);
                 else st.editPct(lineId, pct);
               }}
+              onSetPyramid={(p) => useEditorStore.getState().setPyramid(p)}
             />
           </div>
         </aside>

@@ -1,6 +1,6 @@
-import { editLinePct, removeLine, tierTarget } from "./allocate";
 import { aromaShares } from "./aroma";
 import { expand } from "./expand";
+import { linesAfterEdit, withLines } from "./simulate";
 import type { FormulaContext, Line, Tier } from "./types";
 
 /**
@@ -12,7 +12,7 @@ import type { FormulaContext, Line, Tier } from "./types";
  * yang terjadi kalau dikurangi".
  *
  * Pratinjaunya menjalankan pembagian ulang yang sama persis dengan editor
- * (editLinePct / removeLine dari allocate). Ini bukan detail: mengurangi satu
+ * (lewat simulate.ts). Ini bukan detail: mengurangi satu
  * baris membuat baris terbuka lain di tier itu NAIK mengisi sisanya, dan
  * kalau baris itu juga woody, irisannya hampir tidak turun. Pratinjau yang
  * mengabaikan itu akan menjanjikan penurunan yang tidak pernah terjadi.
@@ -55,7 +55,7 @@ export function facetReducers(
   const tierFilter = scope === "all" ? undefined : scope;
   const shareOf = (lines: Line[]) => {
     try {
-      const items = expand({ ...ctx, version: { ...ctx.version, lines } });
+      const items = expand(withLines(ctx, lines));
       return (
         aromaShares(items, ctx.materials, tierFilter).find((s) => s.facet === facet)
           ?.pct ?? 0
@@ -91,24 +91,14 @@ export function facetReducers(
         ? (ctx.accords.get(l.refId)?.name ?? "accord")
         : (ctx.fos.get(l.refId)?.name ?? "FO");
 
-  const withTier = (tier: Tier, next: Line[]) => [
-    ...lines.filter((l) => l.tier !== tier),
-    ...next,
-  ];
-
   const out: FacetReducer[] = [];
   for (const line of lines) {
     if (!carries.has(line.id)) continue;
     if (tierFilter && line.tier !== tierFilter) continue;
 
-    const tierLines = lines.filter((l) => l.tier === line.tier);
-    const target = tierTarget(ctx.version.pyramid, line.tier);
-
-    const removed = shareOf(withTier(line.tier, removeLine(tierLines, line.id, target)));
     const halfPct = line.pct / 2;
-    const halved = shareOf(
-      withTier(line.tier, editLinePct(tierLines, line.id, halfPct, target)),
-    );
+    const removed = shareOf(linesAfterEdit(ctx, line.id, 0));
+    const halved = shareOf(linesAfterEdit(ctx, line.id, halfPct));
 
     const responsibility = beforePct - removed;
     if (!(responsibility >= MIN_DROP)) continue;

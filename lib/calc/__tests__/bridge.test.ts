@@ -10,6 +10,7 @@ import {
 } from "../bridge";
 import type { FormulaContext, Material } from "../types";
 import { analyze } from "../analyze";
+import { linesAfterAdd, withLines } from "../simulate";
 import { allMaterials, bridgeRules, fixtureContext, materialNamed } from "./fixture";
 
 const ctx: FormulaContext = {
@@ -327,17 +328,13 @@ describe("perkiraan skor setelah dipadukan", () => {
     const pair = before.bridges.crossTier.find((p) => p.suggestions.length > 0)!;
     const sg = pair.suggestions[0];
 
-    c.version.lines.push({
-      id: "padukan-uji",
-      tier: sg.tier,
-      kind: "raw_material",
-      refId: sg.materialId,
-      pct: sg.starterDose,
-      locked: true,
-      userDilutionPct: 100,
-      userSolventId: null,
-    });
-    const after = analyze(c).bridges.crossTier.find(
+    // Lewat alur tombol "+ Tier" yang sebenarnya: baris terbuka di tier
+    // tujuan ikut dibagi ulang.
+    const applied = withLines(
+      c,
+      linesAfterAdd(c, { kind: "raw_material", refId: sg.materialId }, sg.tier, sg.starterDose),
+    );
+    const after = analyze(applied).bridges.crossTier.find(
       (p) => p.pair[0] === pair.pair[0] && p.pair[1] === pair.pair[1],
     )!;
     expect(sg.after).toBeCloseTo(after.sim, 6);

@@ -110,7 +110,7 @@ export function facetBoosts(
         // Penahan ke Base. Yang lain ke kebiasaan bahannya — tier itu
         // kecepatan menguap, bukan pilihan.
         const tier = naturalTier(m, role);
-        const p = previewFacetShift(items, ctx.materials, m, dose, tier, facet, scope);
+        const p = previewFacetShift(ctx, items, m, dose, tier, facet, scope);
         if (p.afterPct - p.beforePct < MIN_GAIN) continue;
         list.push({
           materialId: m.id,

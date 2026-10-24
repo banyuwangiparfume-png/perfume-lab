@@ -13,13 +13,14 @@ import { Cell, Pie, PieChart, ResponsiveContainer } from "recharts";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { Analysis } from "@/lib/calc/analyze";
-import { PHASE_META } from "@/lib/calc/phases";
+import { phaseLever } from "@/lib/calc/phaseAdjust";
+import { PHASE_META, PHASE_PRESENCE, type PhaseKey } from "@/lib/calc/phases";
 import type { BridgeStatus, BridgeSuggestion } from "@/lib/calc/bridge";
 import { FUNCTION_HINTS, SPL_NOTE, UNKNOWN_KEY } from "@/lib/calc/functions";
 import { fmtGram, fmtIdr, fmtNum, fmtPct } from "@/lib/calc/format";
 import { facetReducers } from "@/lib/calc/reduce";
 import { RULES_FOOTER, RULES_HEALTHY, type Warning } from "@/lib/calc/rules";
-import type { FormulaContext, Tier } from "@/lib/calc/types";
+import type { FormulaContext, Pyramid, Tier } from "@/lib/calc/types";
 import { PYRAMID_TIERS, TIER_META, facetColor, facetLabel } from "@/lib/tiers";
 import { cn } from "@/lib/utils";
 
@@ -671,7 +672,18 @@ function AromaTab({
  * pertanyaan yang paling sering — "yang kecium duluan apa?", "kayunya udah
  * kecium dari awal?" — tidak bisa dijawab satu angka.
  */
-function StrengthTab({ analysis }: { analysis: Analysis }) {
+type PhaseActions = {
+  context: FormulaContext;
+  onlyStock: boolean;
+  onAdd?: (materialId: string, tier: Tier, dose: number) => void;
+  onReduce?: (lineId: string, newPct: number) => void;
+  onSetPyramid?: (pyramid: Pyramid) => void;
+};
+
+function StrengthTab({
+  analysis,
+  ...actions
+}: { analysis: Analysis } & PhaseActions) {
   const [view, setView] = useState<"total" | "fase">("total");
 
   return (
@@ -685,13 +697,19 @@ function StrengthTab({ analysis }: { analysis: Analysis }) {
       {view === "total" ? (
         <StrengthTotal analysis={analysis} />
       ) : (
-        <PhaseView report={analysis.phases} />
+        <PhaseView report={analysis.phases} {...actions} />
       )}
     </div>
   );
 }
 
-function PhaseView({ report }: { report: Analysis["phases"] }) {
+function PhaseView({
+  report,
+  ...actions
+}: { report: Analysis["phases"] } & PhaseActions) {
+  // Satu panel atur terbuka sekaligus: fase + tier + arah.
+  const [open, setOpen] = useState<string | null>(null);
+  const canAdjust = !!(actions.onAdd && actions.onReduce);
   const hasData = report.phases.some((p) => p.rows.length > 0);
   if (!hasData) {
     return (
@@ -732,12 +750,65 @@ function PhaseView({ report }: { report: Analysis["phases"] }) {
                 />
               ))}
             </div>
-            <p className="numeric text-[11px] text-[var(--text-muted)]">
-              {PYRAMID_TIERS.map(
-                (t) =>
-                  `${TIER_META[t].label} ${fmtPct(p.tiers[t as "top" | "mid" | "base"])}`,
-              ).join(" · ")}
-            </p>
+            <ul className="space-y-1">
+              {(["top", "mid", "base"] as const).map((t) => {
+                // Tier yang tidak hadir di fase ini (Top di Drydown) tidak
+                // bisa diatur dari resep — tombolnya disembunyikan.
+                const present = PHASE_PRESENCE[p.key][t] > 0;
+                return (
+                  <li key={t}>
+                    <div className="flex items-center gap-2 text-[12px]">
+                      <span
+                        aria-hidden
+                        className="size-2 rounded-full"
+                        style={{ backgroundColor: TIER_META[t].color }}
+                      />
+                      <span className="w-10">{TIER_META[t].label}</span>
+                      <span className="numeric flex-1 text-[var(--text-muted)]">
+                        {fmtPct(p.tiers[t])}
+                      </span>
+                      {canAdjust && present &&
+                        (["down", "up"] as const).map((dir) => {
+                          const key = `${p.key}-${t}-${dir}`;
+                          return (
+                            <button
+                              key={dir}
+                              type="button"
+                              onClick={() => setOpen(open === key ? null : key)}
+                              aria-expanded={open === key}
+                              className={cn(
+                                "flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[11px] font-medium",
+                                open === key
+                                  ? "bg-[var(--cta)] text-white"
+                                  : "text-[var(--text-muted)] hover:bg-[var(--surface-muted)] hover:text-[var(--text)]",
+                              )}
+                            >
+                              {dir === "down" ? "Turunkan" : "Tingkatkan"}
+                              <ChevronDown
+                                className={cn("size-3 transition-transform", open === key && "rotate-180")}
+                              />
+                            </button>
+                          );
+                        })}
+                    </div>
+                    {canAdjust &&
+                      (["down", "up"] as const).map(
+                        (dir) =>
+                          open === `${p.key}-${t}-${dir}` && (
+                            <PhaseLeverPanel
+                              key={dir}
+                              phase={p.key}
+                              tier={t}
+                              direction={dir}
+                              {...actions}
+                              onDone={() => setOpen(null)}
+                            />
+                          ),
+                      )}
+                  </li>
+                );
+              })}
+            </ul>
 
             {p.facets.length > 0 && (
               <p className="text-[12px] leading-relaxed">
@@ -805,6 +876,158 @@ function PhaseView({ report }: { report: Analysis["phases"] }) {
         yang tidak sesuai kebiasaannya akan terhitung salah fase. Urutan
         sebenarnya tetap hidungmu yang memutuskan, di blotter dan di kulit.
       </p>
+    </div>
+  );
+}
+
+/**
+ * Atur porsi satu tier di satu fase. Dua tuas yang bisa disentuh dari resep:
+ * berat tier (target piramida) dan kekuatan isinya (bahan & persennya).
+ * Dihitung saat dibuka — tiap opsi membentangkan ulang formula.
+ */
+function PhaseLeverPanel({
+  phase,
+  tier,
+  direction,
+  context,
+  onlyStock,
+  onAdd,
+  onReduce,
+  onSetPyramid,
+  onDone,
+}: {
+  phase: PhaseKey;
+  tier: "top" | "mid" | "base";
+  direction: "up" | "down";
+  onDone: () => void;
+} & PhaseActions) {
+  const lever = useMemo(
+    () => phaseLever(context, phase, tier, direction, { onlyStock }),
+    [context, phase, tier, direction, onlyStock],
+  );
+  const label = TIER_META[tier].label;
+  const phaseLabel = PHASE_META[phase].label;
+  const arrow = (after: number) => `${fmtPct(lever.beforePct)} → ${fmtPct(after)}`;
+  const nothing =
+    !lever.pyramidShifts?.length && !lever.lines.length && !lever.candidates.length;
+
+  const section = (title: string) => (
+    <p className="text-[11px] font-semibold uppercase tracking-[0.04em] text-[var(--text-subtle)]">
+      {title}
+    </p>
+  );
+
+  return (
+    <div className="ml-4 mt-1.5 space-y-2 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-2.5">
+      <p className="text-[11px] leading-relaxed text-[var(--text-subtle)]">
+        {direction === "down" ? "Menurunkan" : "Menaikkan"} {label} di{" "}
+        {phaseLabel}. Angkanya porsi {label} di fase ini setelah aksinya —
+        termasuk baris lain yang ikut dibagi ulang.
+      </p>
+
+      {lever.pyramidShifts && lever.pyramidShifts.length > 0 && onSetPyramid && (
+        <div className="space-y-1">
+          {section("Geser target piramida")}
+          <div className="flex flex-wrap gap-1.5">
+            {lever.pyramidShifts.map((sh) => (
+              <Button
+                key={`${sh.other}-${sh.delta}`}
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-auto px-2 py-1 text-[11px]"
+                onClick={() => {
+                  onSetPyramid(sh.pyramid);
+                  onDone();
+                }}
+              >
+                <span className="numeric">
+                  {fmtNum(sh.pyramid.top)}/{fmtNum(sh.pyramid.mid)}/{fmtNum(sh.pyramid.base)} · {arrow(sh.afterPct)}
+                </span>
+              </Button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {lever.lines.length > 0 && onReduce && (
+        <div className="space-y-1">
+          {section(`Kurangi isi ${label}`)}
+          <ul className="space-y-1.5">
+            {lever.lines.map((l) => (
+              <li key={l.lineId} className="rounded border border-[var(--border)] px-2 py-1.5">
+                <div className="flex items-baseline gap-2">
+                  <span className="min-w-0 flex-1 truncate text-[12px] font-medium">{l.name}</span>
+                  <span className="numeric text-[11px] text-[var(--text-muted)]">{fmtPct(l.pct)}</span>
+                </div>
+                <div className="mt-1 flex flex-wrap gap-1.5">
+                  {l.options.map((o) => (
+                    <Button
+                      key={o.action}
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-auto px-2 py-1 text-[11px]"
+                      onClick={() => {
+                        onReduce(l.lineId, o.newPct);
+                        onDone();
+                      }}
+                    >
+                      <span className="numeric">
+                        {o.action === "half" ? `Jadi ${fmtPct(o.newPct)}` : "Hapus"} · {arrow(o.afterPct)}
+                      </span>
+                    </Button>
+                  ))}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {lever.candidates.length > 0 && onAdd && (
+        <div className="space-y-1">
+          {section(`Tambah bahan ${label} yang kuat`)}
+          <ul className="space-y-1.5">
+            {lever.candidates.map((c) => (
+              <li
+                key={c.materialId}
+                className="flex items-center gap-2 rounded border border-[var(--border)] px-2 py-1.5"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="text-[12px] font-medium">
+                    {c.name}
+                    {c.inStock && <span className="ml-1 text-[var(--warn)]">★</span>}
+                  </p>
+                  <p className="numeric text-[11px] text-[var(--text-muted)]">
+                    impact {c.impact} · di {fmtPct(c.dose)}: {arrow(c.afterPct)}
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 px-2 text-[11px]"
+                  onClick={() => {
+                    onAdd(c.materialId, tier, c.dose);
+                    onDone();
+                  }}
+                >
+                  + {label}
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {nothing && (
+        <p className="text-[12px] text-[var(--text-muted)]">
+          Tidak ada aksi yang menggeser porsi {label} di {phaseLabel} secara
+          berarti.
+        </p>
+      )}
+      <p className="text-[11px] text-[var(--text-subtle)]">Bisa dibatalkan dengan Undo.</p>
     </div>
   );
 }
@@ -1431,6 +1654,7 @@ export function AnalysisPanel({
   onlyStock = false,
   onOnlyStockChange,
   onReduceLine,
+  onSetPyramid,
 }: {
   analysis: Analysis;
   context: FormulaContext;
@@ -1443,6 +1667,8 @@ export function AnalysisPanel({
   onOnlyStockChange?: (value: boolean) => void;
   /** ubah persen satu baris draf; 0 = hapus barisnya */
   onReduceLine?: (lineId: string, newPct: number) => void;
+  /** ganti target piramida — baris tiap tier diskalakan seperti editor */
+  onSetPyramid?: (pyramid: Pyramid) => void;
 }) {
   const [tab, setTab] = useState<TabKey>("ringkasan");
   const alerts = analysis.warnings.filter((w) => w.level !== "info").length;
@@ -1501,7 +1727,16 @@ export function AnalysisPanel({
           onReduce={onReduceLine}
         />
       )}
-      {tab === "kekuatan" && <StrengthTab analysis={analysis} />}
+      {tab === "kekuatan" && (
+        <StrengthTab
+          analysis={analysis}
+          context={context}
+          onlyStock={onlyStock}
+          onAdd={onAddBridge}
+          onReduce={onReduceLine}
+          onSetPyramid={onSetPyramid}
+        />
+      )}
       {tab === "fungsi" && <FunctionTab analysis={analysis} />}
       {tab === "pelarut" && (
         <SolventTab analysis={analysis} onApply={onApplySolvent} />
@@ -1515,7 +1750,7 @@ export function AnalysisPanel({
         fixative, dan pilihannya ikut terbawa saat berpindah tab.
       */}
       {onOnlyStockChange &&
-        (tab === "aroma" || tab === "bridger") && (
+        (tab === "aroma" || tab === "bridger" || tab === "kekuatan") && (
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
