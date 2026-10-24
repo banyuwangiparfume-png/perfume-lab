@@ -64,3 +64,18 @@ describe("spreadLabels", () => {
     expect(Math.min(...out)).toBeGreaterThanOrEqual(0);
   });
 });
+
+describe("garis penunjuk", () => {
+  it("tidak bersilangan: urutan label tiap sisi sama dengan urutan tepi irisannya", () => {
+    const out = donutLayout([
+      { key: "big", value: 39 }, { key: "b", value: 19 }, { key: "c", value: 16 },
+      ...["d", "e", "f", "g", "h", "i", "j", "k"].map((k, i) => ({ key: k, value: 6 - i * 0.7 })),
+    ]);
+    for (const side of ["start", "end"] as const) {
+      const s = out.filter((x) => x.anchor === side);
+      const byEdge = [...s].sort((a, b) => a.leader[0][1] - b.leader[0][1]).map((x) => x.key);
+      const byLabel = [...s].sort((a, b) => a.labelY - b.labelY).map((x) => x.key);
+      expect(byLabel).toEqual(byEdge);
+    }
+  });
+});

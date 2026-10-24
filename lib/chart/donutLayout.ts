@@ -138,10 +138,15 @@ export function donutLayout(
   return raw.map((r, i) => {
     const y = ys[i];
     const tailX = r.right ? g.cx + g.outer + 20 : g.cx - g.outer - 20;
+    // Garis ke satu KOLOM tegak per sisi, baru belok ke label. Kolomnya di
+    // luar seluruh tepi donat, dan urutan label mengikuti urutan tepi, jadi
+    // garis-garisnya tidak bisa bersilangan — beda dengan menekuk di titik
+    // radial masing-masing, yang bersilangan begitu label tergeser jauh.
+    const colX = r.right ? g.cx + g.outer + 10 : g.cx - g.outer - 10;
     return {
       key: r.d.key,
       path: arcPath(g, r.a0, r.a1),
-      leader: [r.edge, [r.bend[0], y], [tailX, y]].map(([x, yy]) => [f(x), f(yy)]) as [number, number][],
+      leader: [r.edge, [colX, y], [tailX, y]].map(([x, yy]) => [f(x), f(yy)]) as [number, number][],
       labelX: f(r.right ? tailX + 4 : tailX - 4),
       labelY: f(y),
       anchor: r.right ? "start" : "end",

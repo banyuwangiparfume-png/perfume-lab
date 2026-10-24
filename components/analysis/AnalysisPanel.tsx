@@ -604,8 +604,22 @@ function DrillView({
         <p className="text-[13px] text-[var(--text-muted)]">Irisan ini kosong di pie ini.</p>
       ) : (
         <>
+          {/* Kelompok di bawah 3% digabung di donat supaya labelnya tidak
+              berdesakan; daftar di bawah tetap memuat semuanya. */}
           <LabeledDonut
-            slices={groups.map((g) => ({ key: g.key, label: g.label, value: g.pct, color: g.color }))}
+            slices={(() => {
+              const big = groups.filter((g) => g.pct >= 3);
+              const small = groups.filter((g) => g.pct < 3);
+              const rest = small.reduce((a, g) => a + g.pct, 0);
+              return [
+                ...big.map((g) => ({ key: g.key, label: g.label, value: g.pct, color: g.color })),
+                ...(small.length === 1
+                  ? small.map((g) => ({ key: g.key, label: g.label, value: g.pct, color: g.color }))
+                  : rest > 0
+                    ? [{ key: "__other", label: `${small.length} lainnya`, value: rest, color: "var(--facet-other)" }]
+                    : []),
+              ];
+            })()}
             center={{ label: facetName, value: fmtPct(d.slicePct) }}
           />
           <ul className="space-y-2 text-[13px]">
