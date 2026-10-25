@@ -75,13 +75,13 @@ export function VersionHistory({
             <li
               key={v.id}
               className={cn(
-                "flex flex-wrap items-center gap-x-3 gap-y-1.5 py-2.5 first:pt-0",
+                "space-y-1 py-2.5 first:pt-0",
                 isCurrent && "-mx-2 rounded-lg bg-[var(--surface-muted)] px-2 first:pt-2.5",
               )}
             >
               <Link
                 href={`/formulas/${formulaId}?v=${v.id}`}
-                className="flex min-w-0 flex-1 items-start gap-3 hover:text-[var(--brand)]"
+                className="flex items-start gap-3 hover:text-[var(--brand)]"
               >
                 <span className="w-7 shrink-0 font-semibold">v{v.no}</span>
                 <span className="min-w-0">
@@ -93,7 +93,9 @@ export function VersionHistory({
                 </span>
               </Link>
 
-              <div className="flex gap-1">
+              {/* Baris sendiri di bawah catatan: berdampingan, tombolnya menjepit
+                  catatan versi jadi satu-dua kata per baris di layar sempit. */}
+              <div className="-ml-2 flex flex-wrap gap-1 pl-10">
                 {!isCurrent && (
                   <Button asChild variant="ghost" size="sm" className="h-7 px-2 text-[12px]">
                     <Link href={`/formulas/${formulaId}?v=${v.id}`}>
