@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { sameContent, type VersionContent } from "@/lib/versionDiff";
+import { draftVsLatest } from "@/lib/data/versions";
 import {
   describeDbError,
   fail,
@@ -217,10 +217,10 @@ export async function saveVersion(
   // Versi baru hanya kalau isinya memang berubah dari versi terakhir —
   // versi identik membuat riwayat dan halaman banding menyesatkan.
   if ((count ?? 0) >= 1) {
-    const same = await draftMatchesLatest(formulaId);
-    if (same) {
+    const cmp = await draftVsLatest(formulaId);
+    if (cmp?.same) {
       return fail(
-        `Isi draf masih sama persis dengan v${same.versionNo} — belum ada yang perlu disimpan sebagai versi baru. Ubah persen, bahan, dilusi, atau target piramida dulu.`,
+        `Isi draf masih sama persis dengan v${cmp.latestNo} — belum ada yang perlu disimpan sebagai versi baru. Ubah persen, bahan, dilusi, atau target piramida dulu.`,
       );
     }
   }
@@ -241,36 +241,75 @@ export async function saveVersion(
   return ok({ versionId: row.id, versionNo: row.version_no });
 }
 
-const CONTENT_SELECT =
-  "version_no, top_pct, mid_pct, base_pct, lines:formula_lines!formula_lines_formula_version_id_fkey(tier, line_type, raw_material_id, accord_version_id, fo_id, pct, user_dilution_pct, user_solvent_id)";
+/**
+ * "Lanjutkan dari versi ini": isi versi tersimpan disalin ke draf kerja.
+ *
+ * Versi lamanya sendiri tidak disentuh — dia tetap beku dan tetap dirujuk
+ * catatan penciuman. Yang berubah cuma draf, yang memang satu-satunya tempat
+ * mengedit; begitu disimpan, hasilnya jadi versi BARU (v3 dari isi v1), bukan
+ * menimpa riwayat.
+ *
+ * Isi draf yang sekarang tertimpa. Halaman detail memperingatkan kalau draf
+ * punya perubahan yang belum pernah disimpan sebagai versi.
+ */
+export async function restoreVersionToDraft(
+  versionId: string,
+): Promise<ActionResult<{ formulaId: string; draftId: string }>> {
+  const owned = await loadOwnedVersion(versionId);
+  if ("error" in owned) return fail(owned.error);
+  const src = owned.version;
+  if (src.version_no === 0) return fail("Ini sudah draf kerjanya.");
 
-/** Versi tersimpan terakhir kalau isinya sama dengan draf; null kalau beda. */
-async function draftMatchesLatest(
-  formulaId: string,
-): Promise<{ versionNo: number } | null> {
   const db = getDb();
-  const [draft, latest] = await Promise.all([
-    db
-      .from("formula_versions")
-      .select(CONTENT_SELECT)
-      .eq("formula_id", formulaId)
-      .eq("version_no", 0)
-      .maybeSingle(),
-    db
-      .from("formula_versions")
-      .select(CONTENT_SELECT)
-      .eq("formula_id", formulaId)
-      .gt("version_no", 0)
-      .order("version_no", { ascending: false })
-      .limit(1)
-      .maybeSingle(),
-  ]);
-  // Kalau gagal dibaca, jangan menghalangi penyimpanan — lebih baik satu
-  // versi kembar daripada tidak bisa menyimpan sama sekali.
-  if (draft.error || latest.error || !draft.data || !latest.data) return null;
-  const d = draft.data as unknown as VersionContent & { version_no: number };
-  const l = latest.data as unknown as VersionContent & { version_no: number };
-  return sameContent(d, l) ? { versionNo: l.version_no } : null;
+  const { data: draft, error: dErr } = await db
+    .from("formula_versions")
+    .select("id")
+    .eq("formula_id", owned.formulaId)
+    .eq("version_no", 0)
+    .maybeSingle();
+  if (dErr) return fail(describeDbError(dErr));
+  if (!draft) return fail("Draf kerja formula ini tidak ditemukan.");
+
+  const { data: lines, error: lErr } = await db
+    .from("formula_lines")
+    .select(
+      "tier, line_type, raw_material_id, accord_version_id, fo_id, pct, is_locked, user_dilution_pct, user_solvent_id, note, sort_order",
+    )
+    .eq("formula_version_id", versionId)
+    .order("sort_order");
+  if (lErr) return fail(describeDbError(lErr));
+
+  const { error: mErr } = await db
+    .from("formula_versions")
+    .update({
+      batch_g: src.batch_g,
+      top_pct: src.top_pct,
+      mid_pct: src.mid_pct,
+      base_pct: src.base_pct,
+      price_tier_override: src.price_tier_override,
+    })
+    .eq("id", draft.id);
+  if (mErr) return fail(describeDbError(mErr));
+
+  const { error: rErr } = await db.rpc("save_draft_lines", {
+    p_version_id: draft.id,
+    p_lines: (lines ?? []).map((l) => ({
+      tier: l.tier,
+      line_type: l.line_type,
+      raw_material_id: l.raw_material_id,
+      accord_version_id: l.accord_version_id,
+      fo_id: l.fo_id,
+      pct: l.pct,
+      is_locked: l.is_locked,
+      user_dilution_pct: l.user_dilution_pct,
+      user_solvent_id: l.user_solvent_id,
+      note: l.note,
+    })),
+  });
+  if (rErr) return fail(describeDbError(rErr));
+
+  revalidatePath(`/formulas/${owned.formulaId}`, "layout");
+  return ok({ formulaId: owned.formulaId, draftId: draft.id });
 }
 
 // --------------------------------------------------------------------------

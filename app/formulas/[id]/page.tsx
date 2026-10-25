@@ -7,6 +7,7 @@ import { CompositionTable } from "@/components/formula/CompositionTable";
 import { FormulaCardActions } from "@/components/formula/FormulaCardActions";
 import { DiluteButton } from "@/components/formula/DiluteButton";
 import { MixButton } from "@/components/formula/MixButton";
+import { VersionHistory } from "@/components/formula/VersionHistory";
 import {
   Card,
   CardTitle,
@@ -19,7 +20,7 @@ import { fmtGram, fmtIdr } from "@/lib/calc/format";
 import { listEvaluationsForVersion } from "@/lib/data/evaluations";
 import { accordUsage, getFormula, pickVersion } from "@/lib/data/formulas";
 import { loadMaterialMeta } from "@/lib/data/loadEditorData";
-import { getVersionDetail } from "@/lib/data/versions";
+import { draftVsLatest, getVersionDetail } from "@/lib/data/versions";
 import { labStage } from "@/lib/lab";
 import { cn } from "@/lib/utils";
 
@@ -52,6 +53,9 @@ export default async function FormulaDetailPage({
     formula.category === "accord" ? accordUsage(id) : Promise.resolve([]),
     loadMaterialMeta(),
   ]);
+  // Untuk peringatan "draf punya perubahan yang belum disimpan" sebelum
+  // menyalin versi lama ke draf.
+  const draftCmp = await draftVsLatest(id);
   if (!detail) notFound();
 
   const { analysis, context } = detail;
@@ -214,29 +218,19 @@ export default async function FormulaDetailPage({
             {savedVersions.length > 0 && (
               <Card>
                 <CardTitle>Riwayat versi</CardTitle>
-                <ul className="divide-y divide-[var(--border)]">
-                  {savedVersions.map((ver) => (
-                    <li
-                      key={ver.id}
-                      className="flex items-start gap-3 py-2.5 first:pt-0"
-                    >
-                      <Link
-                        href={`/formulas/${id}?v=${ver.id}`}
-                        className="shrink-0 font-medium hover:text-[var(--brand)]"
-                      >
-                        v{ver.version_no}
-                      </Link>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-[13px] text-[var(--text-muted)]">
-                          {ver.change_note ?? ver.label ?? "versi pertama"}
-                        </p>
-                        <p className="text-[11px] text-[var(--text-subtle)]">
-                          {dateFmt.format(new Date(ver.created_at))}
-                        </p>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
+                <VersionHistory
+                  formulaId={id}
+                  currentId={selected.id}
+                  draftHasUnsaved={draftCmp ? !draftCmp.same : true}
+                  versions={[...savedVersions]
+                    .sort((a, b) => b.version_no - a.version_no)
+                    .map((ver) => ({
+                      id: ver.id,
+                      no: ver.version_no,
+                      note: ver.change_note ?? ver.label,
+                      date: dateFmt.format(new Date(ver.created_at)),
+                    }))}
+                />
               </Card>
             )}
 

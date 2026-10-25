@@ -4,6 +4,7 @@ import { analyze, type Analysis } from "../calc/analyze";
 import type { FormulaContext, Line, Tier } from "../calc/types";
 import { getOwnerId } from "../owner";
 import { getDb } from "../supabase/db";
+import { sameContent, type VersionContent } from "../versionDiff";
 import type { FormulaRow, FormulaVersionRow } from "../supabase/database.types";
 import { loadFormulaContext } from "./loadFormulaContext";
 
@@ -265,4 +266,37 @@ export async function listProducibleVersions(): Promise<ProducibleVersion[]> {
       batchG: Number(r.batch_g),
     }))
     .sort((a, b) => a.label.localeCompare(b.label, "id"));
+}
+
+const CONTENT_SELECT =
+  "version_no, top_pct, mid_pct, base_pct, lines:formula_lines!formula_lines_formula_version_id_fkey(tier, line_type, raw_material_id, accord_version_id, fo_id, pct, user_dilution_pct, user_solvent_id)";
+
+/**
+ * Draf kerja dibandingkan dengan versi tersimpan terakhir.
+ *
+ * Dipakai dua tempat: "Simpan versi" menolak isi yang kembar, dan "Lanjutkan
+ * dari versi ini" memperingatkan kalau draf punya perubahan yang belum pernah
+ * disimpan — perubahan itu akan tertimpa. null kalau belum ada versi
+ * tersimpan atau gagal dibaca: lebih baik tidak memblokir apa pun daripada
+ * memblokir karena gagal membaca.
+ */
+export async function draftVsLatest(
+  formulaId: string,
+): Promise<{ latestNo: number; same: boolean } | null> {
+  const db = getDb();
+  const [draft, latest] = await Promise.all([
+    db.from("formula_versions").select(CONTENT_SELECT).eq("formula_id", formulaId).eq("version_no", 0).maybeSingle(),
+    db
+      .from("formula_versions")
+      .select(CONTENT_SELECT)
+      .eq("formula_id", formulaId)
+      .gt("version_no", 0)
+      .order("version_no", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
+  if (draft.error || latest.error || !draft.data || !latest.data) return null;
+  const dv = draft.data as unknown as VersionContent & { version_no: number };
+  const lv = latest.data as unknown as VersionContent & { version_no: number };
+  return { latestNo: lv.version_no, same: sameContent(dv, lv) };
 }
