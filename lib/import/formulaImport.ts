@@ -25,7 +25,24 @@ export const TEMPLATE_COLUMNS = [
   "dilusi_pct",
   "pelarut",
   "catatan",
+  // Opsional, cuma dipakai untuk bahan yang BELUM ada di master: dari sini
+  // bahan baru dibuat lengkap dengan facet-nya, bukan nama kosong yang tidak
+  // ikut pie aroma maupun saran.
+  "family",
+  "odour_profile",
+  "impact",
+  "kategori",
 ] as const;
+
+/** Data bahan baru dari baris import yang namanya belum ada di master. */
+export type MissingMaterial = {
+  name: string;
+  cas: string | null;
+  family: string | null;
+  odourProfile: string | null;
+  impact: number | null;
+  category: string | null;
+};
 
 export type CatalogEntry = {
   id: string;
@@ -54,6 +71,8 @@ export type ImportRow = {
   match: { id: string; kind: LineKind; name: string } | null;
   solvent: { id: string; name: string } | null;
   issues: ImportIssue[];
+  /** terisi kalau namanya tidak ada di master — bisa dibuatkan otomatis */
+  missing: MissingMaterial | null;
 };
 
 export type ImportResult = {
@@ -156,6 +175,7 @@ export function matchFormulaRows(
 
     // ---- bahan ----
     let match: ImportRow["match"] = null;
+    let missing: MissingMaterial | null = null;
     const cas = text(values.cas);
     // Nama lengkap yang persis menang atas potongan nama: "Hedione" yang
     // ditulis utuh adalah Hedione, walau ada bahan lain yang sinonimnya juga
@@ -194,9 +214,16 @@ export function matchFormulaRows(
     } else {
       issues.push({
         level: "error",
-        message:
-          "Tidak ada di master bahan. Tambahkan dulu lewat Bahan → Tambah bahan, atau ganti namanya.",
+        message: "Belum ada di master bahan — bisa ditambahkan otomatis di atas, atau ganti namanya.",
       });
+      missing = {
+        name: rawName,
+        cas: cas || null,
+        family: text(values.family) || null,
+        odourProfile: text(values.odour_profile) || null,
+        impact: parseNumber(values.impact),
+        category: text(values.kategori) || null,
+      };
     }
 
     // ---- persen ----
@@ -260,7 +287,7 @@ export function matchFormulaRows(
       }
     }
 
-    rows.push({ row, rawName, tier, pct, dilutionPct, match, solvent, issues });
+    rows.push({ row, rawName, tier, pct, dilutionPct, match, solvent, issues, missing });
   }
 
   // Bahan yang sama dua kali di tier yang sama hampir selalu salah ketik AI.
@@ -331,3 +358,49 @@ export function pyramidFrom(result: ImportResult): Pyramid | null {
 }
 
 const round5 = (n: number) => Math.round(n * 1e5) / 1e5;
+
+/**
+ * Bahan yang belum ada di master, satu per nama (AI kadang menulis bahan yang
+ * sama dua kali). Data deskriptif diambil dari baris pertama yang mengisinya.
+ */
+export function missingMaterials(result: ImportResult): MissingMaterial[] {
+  const byName = new Map<string, MissingMaterial>();
+  for (const r of result.rows) {
+    if (!r.missing) continue;
+    const key = norm(r.missing.name);
+    const prev = byName.get(key);
+    if (!prev) {
+      byName.set(key, { ...r.missing });
+      continue;
+    }
+    prev.cas ??= r.missing.cas;
+    prev.family ??= r.missing.family;
+    prev.odourProfile ??= r.missing.odourProfile;
+    prev.impact ??= r.missing.impact;
+    prev.category ??= r.missing.category;
+  }
+  return [...byName.values()];
+}
+
+/**
+ * Jumlah persen per tier langsung dari baris mentah — SEBELUM dicocokkan ke
+ * master. Dipakai saat membuat formula baru dari berkas: piramida ditentukan
+ * dari resepnya, termasuk bahan yang belum ada di master (yang akan
+ * ditambahkan kemudian).
+ */
+export function tierSumsFromRaw(
+  raw: { row: number; values: Record<string, unknown> }[],
+): { top: number; mid: number; base: number; total: number; hasTiers: boolean } {
+  const out = { top: 0, mid: 0, base: 0, total: 0, hasTiers: false };
+  for (const { values } of raw) {
+    const pct = parseNumber(values.persen);
+    if (pct == null || pct <= 0 || !text(values.bahan)) continue;
+    out.total += pct;
+    const t = text(values.tier).toLowerCase();
+    if (t === "top" || t === "mid" || t === "base") {
+      out[t] += pct;
+      out.hasTiers = true;
+    }
+  }
+  return out;
+}

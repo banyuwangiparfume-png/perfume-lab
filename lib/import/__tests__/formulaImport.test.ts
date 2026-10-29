@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   matchFormulaRows,
+  missingMaterials,
+  tierSumsFromRaw,
   parseNumber,
   pyramidFrom,
   toLines,
@@ -153,5 +155,55 @@ describe("hasil", () => {
     ]);
     expect(toLines(r, () => "x")).toHaveLength(1);
     expect(r.totalPct).toBe(5);
+  });
+});
+
+describe("bahan yang belum ada di master", () => {
+  it("dibawa lengkap dengan data deskriptifnya dari berkas", () => {
+    const r = run([
+      { tier: "top", bahan: "Single Notes Bergamot Garden", persen: 4.5, family: "Citrus", odour_profile: "bergamot, green, floral", impact: "120", kategori: "Base" },
+    ]);
+    expect(r.rows[0].missing).toEqual({
+      name: "Single Notes Bergamot Garden",
+      cas: null,
+      family: "Citrus",
+      odourProfile: "bergamot, green, floral",
+      impact: 120,
+      category: "Base",
+    });
+  });
+
+  it("nama yang ambigu bukan bahan baru — dia ada, cuma tidak jelas yang mana", () => {
+    expect(run([{ tier: "base", bahan: "Ambrox", persen: 5 }]).rows[0].missing).toBeNull();
+  });
+
+  it("satu bahan baru per nama, data diambil dari baris yang mengisinya", () => {
+    const r = run([
+      { tier: "top", bahan: "Cinnamon Bark", persen: 1 },
+      { tier: "mid", bahan: "cinnamon bark", persen: 1, odour_profile: "cinnamon, warm, spicy" },
+    ]);
+    const m = missingMaterials(r);
+    expect(m).toHaveLength(1);
+    expect(m[0].odourProfile).toBe("cinnamon, warm, spicy");
+  });
+});
+
+describe("piramida dari baris mentah", () => {
+  it("menjumlah per tier termasuk bahan yang belum ada di master", () => {
+    const s = tierSumsFromRaw(
+      [
+        { tier: "top", bahan: "Bergamot", persen: 15 },
+        { tier: "mid", bahan: "Bahan Baru", persen: "25" },
+        { tier: "base", bahan: "Iso E Super", persen: "60%" },
+        { tier: "", bahan: "", persen: "" },
+      ].map((values, i) => ({ row: i + 2, values })),
+    );
+    expect(s).toEqual({ top: 15, mid: 25, base: 60, total: 100, hasTiers: true });
+  });
+
+  it("tanpa kolom tier, tidak dianggap berpiramida", () => {
+    const s = tierSumsFromRaw([{ row: 2, values: { bahan: "A", persen: 100 } }]);
+    expect(s.hasTiers).toBe(false);
+    expect(s.total).toBe(100);
   });
 });

@@ -34,7 +34,8 @@ import type { EditorData } from "@/lib/data/loadEditorData";
 import type { MaterialMeta } from "@/lib/data/loadEditorData";
 import { PYRAMID_TIERS, TIER_META, parseDecimal } from "@/lib/tiers";
 import { targetOf, tierSummary, useEditorStore } from "@/stores/editorStore";
-import { ImportFormulaDialog } from "./ImportFormulaDialog";
+import { ImportFormulaDialog, type RawRow } from "./ImportFormulaDialog";
+import { PENDING_IMPORT_PREFIX } from "@/lib/import/pending";
 import { MaterialPicker, type PickResult } from "./MaterialPicker";
 import type { ImportCatalog } from "@/lib/import/formulaImport";
 import { PyramidInput } from "./PyramidInput";
@@ -72,6 +73,23 @@ export function FormulaEditor(props: FormulaEditorProps) {
   const [pickerTier, setPickerTier] = useState<Tier | null>(null);
   const [saveOpen, setSaveOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  // Berkas yang dipilih di halaman "Formula baru" — dibaca sekali saat editor
+  // pertama dibuka, lalu dialog import langsung terbuka dengan isinya.
+  const [pendingImport, setPendingImport] = useState<{
+    rows: RawRow[];
+    fileName: string;
+  } | null>(null);
+  useEffect(() => {
+    const key = `${PENDING_IMPORT_PREFIX}${props.formulaId}`;
+    try {
+      const raw = sessionStorage.getItem(key);
+      if (!raw) return;
+      sessionStorage.removeItem(key);
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- sekali saat dibuka
+      setPendingImport(JSON.parse(raw));
+      setImportOpen(true);
+    } catch {}
+  }, [props.formulaId]);
   const [changeNote, setChangeNote] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [batchInput, setBatchInput] = useState(String(props.initial.batchG));
@@ -716,6 +734,13 @@ export function FormulaEditor(props: FormulaEditorProps) {
       </div>
 
       <ImportFormulaDialog
+        key={pendingImport ? "pending" : "manual"}
+        initialRaw={pendingImport?.rows}
+        initialFileName={pendingImport?.fileName}
+        onMaterialsCreated={(list) => {
+          setCreated((prev) => [...prev, ...list]);
+          router.refresh();
+        }}
         open={importOpen}
         onOpenChange={setImportOpen}
         catalog={importCatalog}

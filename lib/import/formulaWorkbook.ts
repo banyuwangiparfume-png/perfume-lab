@@ -40,6 +40,22 @@ const COLUMN_NOTES: Record<(typeof TEMPLATE_COLUMNS)[number], { width: number; n
     width: 40,
     note: "Opsional. Alasan bahan ini dipakai — tidak diimpor, untuk dibaca sendiri.",
   },
+  family: {
+    width: 16,
+    note: "HANYA untuk bahan yang belum ada di berkas stok. Salah satu: Citrus, Green, Aldehyde, Herbal, Floral, Fruity, Mineral, Woody, Musk / Animalic, Sweet/Balsamic.",
+  },
+  odour_profile: {
+    width: 40,
+    note: "HANYA untuk bahan baru. Deskriptor bau dipisah koma, yang paling dominan duluan (misal: bergamot, citrus, green, floral). Dari sini aplikasi menghitung arah aromanya.",
+  },
+  impact: {
+    width: 8,
+    note: "HANYA untuk bahan baru. Perkiraan daya pukul per gram, skala sama dengan berkas stok (umumnya 10–1000). Kosong kalau tidak tahu.",
+  },
+  kategori: {
+    width: 14,
+    note: "HANYA untuk bahan baru. Aromachemical, Essential Oil, Natural Isolate, Absolu, atau Base.",
+  },
 };
 
 export function buildFormulaTemplate(): ExcelJS.Workbook {
@@ -81,7 +97,7 @@ export function buildFormulaTemplate(): ExcelJS.Workbook {
   help.addRow({});
   for (const [kolom, aturan] of [
     ["isi", "Satu baris per bahan di lembar Formula, mulai baris 2. Jangan ubah nama kolom atau nama lembar."],
-    ["bahan", "Pakai hanya bahan dari berkas ekspor stok. Kalau butuh bahan yang tidak ada di sana, sebutkan terpisah di luar berkas ini — jangan dimasukkan ke lembar Formula."],
+    ["bahan", "Utamakan bahan dari berkas ekspor stok. Bahan yang tidak ada di sana boleh dipakai — isi juga family, odour_profile, impact, dan kategori-nya, supaya aplikasi bisa menambahkannya ke master dengan arah aroma yang benar."],
     ["kekuatan", "odor_impact di berkas stok adalah daya pukul per gram. Bahan ber-impact tinggi (≥ 300) biasanya cukup di bawah 1–2%; kekuatan di formula ≈ persen × impact."],
     ["piramida", "Umumnya Top 10–25%, Mid 25–35%, Base 40–60% dari total. Jumlah persen per tier menjadi target piramida saat diimpor."],
     ["angka", "Pakai titik atau koma desimal; tanda % boleh. Jangan pakai rumus Excel."],

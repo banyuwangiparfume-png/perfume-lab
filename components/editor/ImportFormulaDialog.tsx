@@ -12,11 +12,14 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { parseFormulaFile } from "@/app/actions/formulaImport";
+import { createMaterialsBulk, type CreatedMaterial } from "@/app/actions/materials";
+import { toast } from "sonner";
 import { fmtPct } from "@/lib/calc/format";
 import type { Line, Pyramid } from "@/lib/calc/types";
 import {
   isImportable,
   matchFormulaRows,
+  missingMaterials,
   pyramidFrom,
   toLines,
   type ImportCatalog,
@@ -24,7 +27,7 @@ import {
 import { TIER_META } from "@/lib/tiers";
 import { cn } from "@/lib/utils";
 
-type RawRow = { row: number; values: Record<string, unknown> };
+export type RawRow = { row: number; values: Record<string, unknown> };
 
 /**
  * Import formula dari template Excel, dengan pratinjau sebelum apa pun
@@ -43,6 +46,9 @@ export function ImportFormulaDialog({
   currentLineCount,
   newId,
   onImport,
+  onMaterialsCreated,
+  initialRaw,
+  initialFileName,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -51,9 +57,15 @@ export function ImportFormulaDialog({
   currentLineCount: number;
   newId: () => string;
   onImport: (lines: Line[], pyramid: Pyramid | null) => void;
+  /** bahan baru yang dibuat dari berkas — editor menambahkannya ke katalog */
+  onMaterialsCreated?: (created: CreatedMaterial[]) => void;
+  /** berkas yang sudah dibaca di halaman Formula baru */
+  initialRaw?: RawRow[];
+  initialFileName?: string;
 }) {
-  const [raw, setRaw] = useState<RawRow[] | null>(null);
-  const [fileName, setFileName] = useState("");
+  const [raw, setRaw] = useState<RawRow[] | null>(initialRaw ?? null);
+  const [fileName, setFileName] = useState(initialFileName ?? "");
+  const [creating, startCreating] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -88,6 +100,32 @@ export function ImportFormulaDialog({
   };
 
   const errors = result?.rows.filter((r) => !isImportable(r)).length ?? 0;
+  const missing = result ? missingMaterials(result) : [];
+
+  const createMissing = () =>
+    startCreating(async () => {
+      const res = await createMaterialsBulk(
+        missing.map((m) => ({
+          name: m.name,
+          cas_number: m.cas,
+          family: m.family,
+          odour_profile: m.odourProfile,
+          odor_impact: m.impact,
+          category: m.category,
+        })),
+      );
+      if (!res.ok) {
+        toast.error(res.error);
+        return;
+      }
+      // Katalog editor bertambah → baris yang tadinya merah dicocokkan ulang
+      // otomatis (matchFormulaRows bergantung pada katalog).
+      if (res.data.created.length) onMaterialsCreated?.(res.data.created);
+      if (res.data.created.length) {
+        toast.success(`${res.data.created.length} bahan baru masuk master.`);
+      }
+      for (const f of res.data.failed) toast.error(`${f.name}: ${f.error}`);
+    });
   const totalOff = result ? Math.abs(result.totalPct - 100) > 0.01 : false;
   const pyramid = result && pyramidMode ? pyramidFrom(result) : null;
 
@@ -145,6 +183,34 @@ export function ImportFormulaDialog({
           <p className="rounded-lg bg-[var(--danger-soft)] px-3 py-2 text-[13px]">
             {error}
           </p>
+        )}
+
+        {/*
+          Bahan yang belum ada di master dibuat dari berkasnya sendiri —
+          lengkap dengan family dan odour profile kalau AI mengisinya, supaya
+          bahan baru langsung ikut pie aroma dan saran, bukan nama kosong.
+        */}
+        {missing.length > 0 && onMaterialsCreated && (
+          <div className="space-y-2 rounded-lg border border-[var(--warn)] bg-[var(--warn-soft)] p-3">
+            <p className="text-[13px] font-medium">
+              {missing.length} bahan belum ada di master
+            </p>
+            <ul className="space-y-0.5 text-[12px]">
+              {missing.map((m) => (
+                <li key={m.name}>
+                  <span className="font-medium">{m.name}</span>{" "}
+                  <span className="text-[var(--text-muted)]">
+                    {m.odourProfile
+                      ? `— ${[m.family, m.odourProfile].filter(Boolean).join(" · ")}${m.impact != null ? ` · impact ${m.impact}` : ""}`
+                      : "— nama saja; tidak akan ikut pie aroma sampai odour profile-nya dilengkapi"}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <Button type="button" size="sm" onClick={createMissing} disabled={creating}>
+              {creating ? "Menambahkan…" : `Tambahkan ${missing.length} bahan ke master`}
+            </Button>
+          </div>
         )}
 
         {result && (

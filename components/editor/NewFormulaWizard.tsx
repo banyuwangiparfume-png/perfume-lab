@@ -1,8 +1,12 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, ArrowRight } from "lucide-react";
+import { ArrowLeft, ArrowRight, Upload } from "lucide-react";
+import { parseFormulaFile } from "@/app/actions/formulaImport";
+import { tierSumsFromRaw } from "@/lib/import/formulaImport";
+import { PENDING_IMPORT_PREFIX } from "@/lib/import/pending";
+import type { RawRow } from "./ImportFormulaDialog";
 import { createFormula } from "@/app/actions/formulas";
 import { Card, Notice } from "@/components/shared/primitives";
 import { Button } from "@/components/ui/button";
@@ -56,6 +60,55 @@ export function NewFormulaWizard() {
   const [description, setDescription] = useState("");
   const [pyramid, setPyramid] = useState<Pyramid>({ top: 15, mid: 25, base: 60 });
   const [error, setError] = useState<string | null>(null);
+  // Mulai dari berkas: dibaca di sini supaya piramida dan nama bisa diisi
+  // dari resepnya sebelum formula dibuat; barisnya diimpor di editor.
+  const [file, setFile] = useState<{ name: string; rows: RawRow[]; note: string } | null>(null);
+  const [reading, startReading] = useTransition();
+  const fileInput = useRef<HTMLInputElement>(null);
+
+  const readFile = (f: File) => {
+    setError(null);
+    const form = new FormData();
+    form.set("file", f);
+    startReading(async () => {
+      const res = await parseFormulaFile(form);
+      if (!res.ok) {
+        setError(res.error);
+        return;
+      }
+      const sums = tierSumsFromRaw(res.data);
+      let note: string;
+      if (sums.hasTiers && sums.total > 0) {
+        // Piramida mengikuti resep. Kalau totalnya bukan 100 (bahan yang
+        // belum ada di master sudah ikut dihitung di sini), proporsinya
+        // dipertahankan dan dinormalkan ke 100 — angka yang ditampilkan di
+        // langkah 2 masih bisa diubah.
+        const r1 = (n: number) => Math.round((n / sums.total) * 1000) / 10;
+        const top = r1(sums.top);
+        const mid = r1(sums.mid);
+        const base = Math.round((100 - top - mid) * 10) / 10;
+        setPyramidMode(true);
+        setPyramid({ top, mid, base });
+        note =
+          Math.abs(sums.total - 100) < 0.01
+            ? `Piramida diambil dari berkas: ${top}/${mid}/${base}.`
+            : `Total berkas ${Math.round(sums.total * 10) / 10}% — piramida dinormalkan ke 100: ${top}/${mid}/${base}.`;
+      } else {
+        setPyramidMode(false);
+        note = "Berkas tanpa kolom tier — formula dibuat tanpa piramida.";
+      }
+      if (!name.trim()) {
+        setName(
+          f.name
+            .replace(/\.xlsx$/i, "")
+            .replace(/^formula[-_ ]*/i, "")
+            .replace(/[-_]+/g, " ")
+            .trim(),
+        );
+      }
+      setFile({ name: f.name, rows: res.data, note: `${res.data.length} baris terbaca. ${note}` });
+    });
+  };
 
   const batchG = parseDecimal(batchInput) ?? 0;
   const pyramidTotal = pyramid.top + pyramid.mid + pyramid.base;
@@ -86,6 +139,17 @@ export function NewFormulaWizard() {
         setStep(result.field === "pyramid" ? 2 : 1);
         return;
       }
+      if (file) {
+        // Editor membaca ini sekali saat dibuka, lalu membuka dialog import
+        // dengan isi berkas — bahan yang belum ada di master bisa ditambahkan
+        // di sana.
+        try {
+          sessionStorage.setItem(
+            `${PENDING_IMPORT_PREFIX}${result.data.formulaId}`,
+            JSON.stringify({ rows: file.rows, fileName: file.name }),
+          );
+        } catch {}
+      }
       router.push(`/formulas/${result.data.formulaId}/edit`);
     });
   };
@@ -111,6 +175,52 @@ export function NewFormulaWizard() {
       <Card>
         {step === 1 ? (
           <div className="space-y-4">
+            {/* Opsional: mulai dari template yang sudah diisi (biasanya AI). */}
+            <div className="rounded-lg border border-dashed border-[var(--border-strong)] p-3">
+              <input
+                ref={fileInput}
+                type="file"
+                accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) readFile(f);
+                }}
+              />
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={reading}
+                  onClick={() => fileInput.current?.click()}
+                >
+                  <Upload className="size-4" />
+                  {reading ? "Membaca…" : file ? "Ganti berkas" : "Mulai dari file .xlsx"}
+                </Button>
+                {file ? (
+                  <>
+                    <span className="truncate text-[12px] font-medium">{file.name}</span>
+                    <button
+                      type="button"
+                      onClick={() => setFile(null)}
+                      className="text-[12px] text-[var(--text-muted)] underline"
+                    >
+                      batal
+                    </button>
+                  </>
+                ) : (
+                  <span className="text-[12px] text-[var(--text-subtle)]">
+                    Opsional — template formula yang sudah diisi. Piramidanya ikut
+                    berkas.
+                  </span>
+                )}
+              </div>
+              {file && (
+                <p className="mt-1.5 text-[12px] text-[var(--text-muted)]">{file.note}</p>
+              )}
+            </div>
+
             <div>
               <Label htmlFor="name" className="mb-1.5">
                 Nama <span className="text-[var(--danger)]">*</span>

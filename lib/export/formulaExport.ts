@@ -102,7 +102,9 @@ export function buildFormulaWorkbook(input: FormulaExportInput): ExcelJS.Workboo
     });
   }
   // Kolom template ditandai supaya jelas mana yang dibaca import.
-  for (let c = 1; c <= TEMPLATE_COLUMNS.length; c++) {
+  // Hanya kolom resep (tier … catatan) — kolom bahan-baru template tidak
+  // ada di lembar ekspor ini.
+  for (let c = 1; c <= TEMPLATE_COLUMNS.indexOf("catatan") + 1; c++) {
     ws.getRow(1).getCell(c).fill = {
       type: "pattern",
       pattern: "solid",

@@ -271,6 +271,28 @@ export async function createMaterial(
   });
 }
 
+/**
+ * Bahan baru dari import formula — beberapa sekaligus.
+ *
+ * Satu per satu lewat createMaterial(), bukan insert massal: setiap bahan
+ * melewati pemeriksaan duplikat dan penurunan facet/tier yang sama persis
+ * dengan form bahan baru. Gagal satu tidak membatalkan yang lain — yang
+ * berhasil tetap dipakai, yang gagal dilaporkan dengan alasannya.
+ */
+export async function createMaterialsBulk(
+  inputs: NewMaterialInput[],
+): Promise<ActionResult<{ created: CreatedMaterial[]; failed: { name: string; error: string }[] }>> {
+  if (inputs.length > 50) return fail("Maksimal 50 bahan baru sekali import.");
+  const created: CreatedMaterial[] = [];
+  const failed: { name: string; error: string }[] = [];
+  for (const input of inputs) {
+    const r = await createMaterial(input);
+    if (r.ok) created.push(r.data);
+    else failed.push({ name: String(input.name ?? ""), error: r.error });
+  }
+  return ok({ created, failed });
+}
+
 export async function updateMaterial(
   id: string,
   input: z.input<typeof materialInput>,
